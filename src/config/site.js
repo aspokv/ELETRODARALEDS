@@ -7,9 +7,8 @@ export const SITE_CONFIG = {
   minDiscount: 20,
   maxDiscount: 25,
 
-  // URL que recebe os cadastros (ex.: Web App do Google Apps Script ligado a uma planilha).
-  // Defina VITE_LEAD_ENDPOINT no arquivo .env — veja docs/google-sheets.md.
-  leadEndpoint: import.meta.env.VITE_LEAD_ENDPOINT || "",
+  // Rota do servidor (server/server.mjs) que salva cadastros e contas.
+  leadEndpoint: "/api/leads",
 
   // Simulador
   minBill: 250,

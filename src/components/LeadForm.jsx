@@ -24,24 +24,39 @@ const readAsBase64 = (file) =>
     reader.readAsDataURL(file);
   });
 
-// Salva o cadastro (e a conta, se houver) no endpoint configurado.
-// Retorna o link da conta salva, quando o endpoint devolve um.
-// Usa text/plain para evitar o preflight de CORS, que o Google Apps Script não responde.
-async function saveLead(lead, file) {
-  if (!SITE_CONFIG.leadEndpoint) {
-    console.warn('VITE_LEAD_ENDPOINT não configurado — cadastro não foi salvo.', lead);
-    return null;
+// Reduz fotos grandes (celular tira fotos de 3–5 MB) para ~300 KB antes de enviar,
+// mantendo a conta legível. PDFs e formatos que o navegador não decodifica (HEIC) vão como estão.
+async function compressImage(file) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1800 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' });
+  } catch {
+    return file;
   }
+}
+
+// Salva o cadastro (e a conta, se houver) no servidor. Retorna o link da conta salva.
+async function saveLead(lead, file) {
   const payload = { ...lead };
   if (file) {
-    payload.file = { name: file.name, type: file.type, data: await readAsBase64(file) };
+    const upload = await compressImage(file);
+    payload.file = { name: upload.name, type: upload.type, data: await readAsBase64(upload) };
   }
   const res = await fetch(SITE_CONFIG.leadEndpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
   const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data.fileUrl || null;
 }
 
@@ -121,6 +136,7 @@ export function LeadForm() {
       annualSavingsMin,
       annualSavings,
       hasFile: Boolean(file),
+      seller: new URLSearchParams(window.location.search).get('vendedor') || '',
       createdAt: new Date().toISOString(),
       source: window.location.href,
     };

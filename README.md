@@ -7,7 +7,8 @@ Landing page de captação de cadastros da **Eletrodara Gestão de Energia**. Fo
 ## ⚡ Estrutura
 
 - **Hero + formulário de cadastro** acima da dobra.
-- **Cadastros salvos** numa planilha Google via Apps Script (veja [docs/google-sheets.md](docs/google-sheets.md)); após o cadastro, a pessoa pode seguir para o WhatsApp com a mensagem pronta.
+- **Cadastros e contas salvos no próprio servidor** (`server/server.mjs`, sem dependências). A mensagem do WhatsApp leva o link da conta.
+- **Painel com senha** em `/painel`: lista os cadastros, abre/apaga contas e exclui cadastros. Contas são apagadas sozinhas após 30 dias.
 - **Como funciona** em 3 passos, **perguntas frequentes** e dados institucionais.
 - Textos e dados da empresa centralizados em `src/config/site.js`.
 
@@ -27,19 +28,20 @@ Landing page de captação de cadastros da **Eletrodara Gestão de Energia**. Fo
 npm install
 ```
 
-### 2. Configurar onde salvar os cadastros
-Copie `.env.example` para `.env` e preencha `VITE_LEAD_ENDPOINT` (passo a passo em [docs/google-sheets.md](docs/google-sheets.md)).
-
-### 3. Rodar em Desenvolvimento
+### 2. Rodar em Desenvolvimento
+Em dois terminais:
 ```bash
-npm run dev
+npm run server   # API + painel na porta 3001 (dados em ./data)
+npm run dev      # site com proxy para a API
 ```
-Acesse [http://localhost:5173](http://localhost:5173).
+Acesse [http://localhost:5173](http://localhost:5173). Para usar o painel localmente, defina `ADMIN_PASSWORD` antes de `npm run server`.
 
-### 4. Build de Produção
-```bash
-npm run build
-```
+### 3. Produção
+O Dockerfile gera o site e roda `node server/server.mjs` na porta 80. Variáveis:
+
+- `ADMIN_PASSWORD` — senha do painel (`/painel`, usuário `eletrodara` ou `ADMIN_USER`). Sem ela o painel fica desativado.
+- `FILE_RETENTION_DAYS` — dias até a conta ser apagada sozinha (padrão 30).
+- Monte um volume persistente em `/data` (cadastros e contas).
 
 ---
 

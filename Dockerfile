@@ -1,4 +1,4 @@
-﻿# Stage 1: Build the React + Vite application
+# Stage 1: build do site (React + Vite)
 FROM node:22-alpine AS builder
 
 WORKDIR /app
@@ -7,16 +7,24 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-ARG VITE_LEAD_ENDPOINT
-ENV VITE_LEAD_ENDPOINT=$VITE_LEAD_ENDPOINT
 RUN npm run build
 
-# Stage 2: Ultra-lightweight production server with Nginx
-FROM nginx:alpine
+# Stage 2: servidor Node (site + cadastros + painel), sem dependências externas
+FROM node:22-alpine
 
-COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+WORKDIR /app
+ENV NODE_ENV=production \
+    PORT=80 \
+    DIST_DIR=/app/dist \
+    DATA_DIR=/data
 
+COPY --from=builder /app/dist ./dist
+COPY server ./server
+
+# Cadastros e contas ficam em /data — monte um volume persistente aqui.
+VOLUME /data
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://127.0.0.1/api/health || exit 1
+
+CMD ["node", "server/server.mjs"]
