@@ -1,5 +1,5 @@
-// Servidor da landing page: serve o site (dist/), recebe cadastros e expõe o painel com senha.
-// Sem dependências externas — só módulos nativos do Node.
+// Servidor da landing page: serve o site (dist/), recebe cadastros e expõe o painel
+// de administração (admin + parceiros). Sem dependências externas — só módulos nativos do Node.
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import { createReadStream, existsSync } from 'node:fs';
@@ -7,24 +7,27 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+import { createStore, STATUSES, STATUS_IDS } from './store.mjs';
+import { createAuth } from './auth.mjs';
+import * as views from './views.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(process.env.DIST_DIR || path.join(ROOT, '..', 'dist'));
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(ROOT, '..', 'data'));
-const LEADS_DIR = path.join(DATA_DIR, 'leads');
-const FILES_DIR = path.join(DATA_DIR, 'files');
 const PORT = Number(process.env.PORT || 3001);
 const ADMIN_USER = process.env.ADMIN_USER || 'eletrodara';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const FILE_RETENTION_DAYS = Number(process.env.FILE_RETENTION_DAYS || 30);
 const MAX_BODY_BYTES = 15 * 1024 * 1024; // conta de até ~10 MB em base64
 const RATE_LIMIT_PER_HOUR = 20;
+const TZ_OFFSET_MS = -3 * 60 * 60 * 1000; // America/Sao_Paulo (sem horário de verão)
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.csv': 'text/csv; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -37,91 +40,37 @@ const MIME = {
 };
 const UPLOAD_EXT = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/heic': '.heic' };
 
-// ---------------------------------------------------------------------------
-// Armazenamento: um JSON por cadastro em data/leads, arquivos em data/files.
-// ---------------------------------------------------------------------------
-
-/** @type {Map<string, any>} id -> cadastro */
-const leads = new Map();
-
-async function loadLeads() {
-  await fs.mkdir(LEADS_DIR, { recursive: true });
-  await fs.mkdir(FILES_DIR, { recursive: true });
-  for (const name of await fs.readdir(LEADS_DIR)) {
-    if (!name.endsWith('.json')) continue;
-    try {
-      const lead = JSON.parse(await fs.readFile(path.join(LEADS_DIR, name), 'utf8'));
-      leads.set(lead.id, lead);
-    } catch (err) {
-      console.error('Cadastro ilegível:', name, err.message);
-    }
-  }
-  console.log(`${leads.size} cadastros carregados de ${DATA_DIR}`);
-}
-
-const saveLead = (lead) => fs.writeFile(path.join(LEADS_DIR, `${lead.id}.json`), JSON.stringify(lead, null, 2));
-
-async function removeFile(lead) {
-  if (!lead.file) return;
-  await fs.rm(path.join(FILES_DIR, lead.file.stored), { force: true });
-  lead.file = { ...lead.file, deletedAt: new Date().toISOString() };
-}
-
-async function deleteLead(id) {
-  const lead = leads.get(id);
-  if (!lead) return false;
-  if (lead.file && !lead.file.deletedAt) await removeFile(lead);
-  await fs.rm(path.join(LEADS_DIR, `${id}.json`), { force: true });
-  leads.delete(id);
-  return true;
-}
-
-// Apaga automaticamente as contas (arquivos) mais antigas que FILE_RETENTION_DAYS.
-async function cleanupOldFiles() {
-  const limit = Date.now() - FILE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
-  for (const lead of leads.values()) {
-    if (lead.file && !lead.file.deletedAt && new Date(lead.createdAt).getTime() < limit) {
-      await removeFile(lead);
-      await saveLead(lead);
-      console.log('Conta expirada removida:', lead.id);
-    }
-  }
-}
-
-function storageBytes() {
-  let total = 0;
-  for (const lead of leads.values()) if (lead.file && !lead.file.deletedAt) total += lead.file.size || 0;
-  return total;
-}
+const store = createStore(DATA_DIR);
+await store.load();
+const auth = await createAuth({ dataDir: DATA_DIR, adminUser: ADMIN_USER, adminPassword: ADMIN_PASSWORD, store });
 
 // ---------------------------------------------------------------------------
 // Utilitários HTTP
 // ---------------------------------------------------------------------------
 
-const escapeHtml = (s) =>
-  String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-
 const clientIp = (req) => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress;
 
 const publicOrigin = (req) => {
-  const proto = req.headers['x-forwarded-proto'] || 'https';
-  return `${proto.split(',')[0]}://${req.headers['x-forwarded-host'] || req.headers.host}`;
+  const proto = (req.headers['x-forwarded-proto'] || 'https').split(',')[0];
+  return `${proto}://${req.headers['x-forwarded-host'] || req.headers.host}`;
 };
 
 function send(res, status, body, headers = {}) {
   res.writeHead(status, { 'X-Content-Type-Options': 'nosniff', ...headers });
   res.end(body);
 }
-
 const sendJson = (res, status, data) => send(res, status, JSON.stringify(data), { 'Content-Type': MIME['.json'] });
+const sendHtml = (res, status, html, headers = {}) =>
+  send(res, status, html, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', ...headers });
+const redirect = (res, location, headers = {}) => send(res, 303, '', { Location: location, ...headers });
 
-function readBody(req) {
+function readBody(req, limit = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', (chunk) => {
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > limit) {
         reject(Object.assign(new Error('Arquivo grande demais'), { status: 413 }));
         req.destroy();
         return;
@@ -133,7 +82,9 @@ function readBody(req) {
   });
 }
 
-const hits = new Map(); // ip -> timestamps
+const readForm = async (req) => Object.fromEntries(new URLSearchParams(await readBody(req, 64 * 1024)));
+
+const hits = new Map(); // ip -> timestamps de cadastros
 function rateLimited(ip) {
   const now = Date.now();
   const recent = (hits.get(ip) || []).filter((t) => now - t < 60 * 60 * 1000);
@@ -142,34 +93,7 @@ function rateLimited(ip) {
   return recent.length > RATE_LIMIT_PER_HOUR;
 }
 
-function isAdmin(req) {
-  if (!ADMIN_PASSWORD) return false;
-  const [scheme, encoded] = (req.headers.authorization || '').split(' ');
-  if (scheme !== 'Basic' || !encoded) return false;
-  const [user, ...rest] = Buffer.from(encoded, 'base64').toString('utf8').split(':');
-  const expected = Buffer.from(`${ADMIN_USER}:${ADMIN_PASSWORD}`);
-  const given = Buffer.from(`${user}:${rest.join(':')}`);
-  return given.length === expected.length && crypto.timingSafeEqual(given, expected);
-}
-
-const askLogin = (res) =>
-  send(res, 401, 'Acesso restrito.', { 'WWW-Authenticate': 'Basic realm="Painel Eletrodara", charset="UTF-8"', 'Content-Type': MIME['.txt'] });
-
-// Bloqueia por 15 min o IP que errar a senha do painel 8 vezes, para dificultar adivinhação.
-const LOGIN_MAX_FAILURES = 8;
-const LOGIN_WINDOW_MS = 15 * 60 * 1000;
-const loginFailures = new Map(); // ip -> timestamps de erros
-
-function loginBlocked(ip) {
-  const now = Date.now();
-  const recent = (loginFailures.get(ip) || []).filter((t) => now - t < LOGIN_WINDOW_MS);
-  loginFailures.set(ip, recent);
-  return recent.length >= LOGIN_MAX_FAILURES;
-}
-
-const registerLoginFailure = (ip) => loginFailures.set(ip, [...(loginFailures.get(ip) || []), Date.now()]);
-
-// Bloqueia POSTs do painel vindos de outros sites (CSRF), já que o navegador reenvia a senha sozinho.
+// Bloqueia POSTs do painel vindos de outros sites (CSRF).
 const sameOrigin = (req) => {
   try {
     const { host } = new URL(req.headers.origin || req.headers.referer);
@@ -179,8 +103,17 @@ const sameOrigin = (req) => {
   }
 };
 
+const onlyDigits = (v) => String(v ?? '').replace(/\D/g, '');
+// Aceita "(54) 99999-9999", "54999999999" ou "5554999999999" e guarda com 55 na frente.
+const normalizeWhatsapp = (v) => {
+  const d = onlyDigits(v);
+  if (d.length === 10 || d.length === 11) return `55${d}`;
+  if ((d.length === 12 || d.length === 13) && d.startsWith('55')) return d;
+  return null;
+};
+
 // ---------------------------------------------------------------------------
-// Rotas
+// API pública (site)
 // ---------------------------------------------------------------------------
 
 async function handleCreateLead(req, res) {
@@ -194,7 +127,9 @@ async function handleCreateLead(req, res) {
   }
 
   const text = (v, max = 120) => String(v ?? '').trim().slice(0, max);
-  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+  const num = (v) => (v !== '' && v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+  const partner = data.partner ? store.findPartnerBySlug(text(data.partner, 60)) : null;
+  const billValue = num(data.billValue);
 
   const lead = {
     id: crypto.randomUUID(),
@@ -203,42 +138,48 @@ async function handleCreateLead(req, res) {
     phone: text(data.phone, 20),
     city: text(data.city),
     distributor: text(data.distributor, 40),
-    billValue: num(data.billValue),
+    billValue,
     monthlySavingsMin: num(data.monthlySavingsMin),
     monthlySavings: num(data.monthlySavings),
-    seller: text(data.seller, 20),
+    kwhEstimated: billValue ? Math.round(billValue / store.settings.tariffPerKwh) : null,
+    kwhReal: null,
+    partnerId: partner?.active ? partner.id : null,
+    status: 'novo',
+    history: [],
+    notes: '',
     source: text(data.source, 300),
     file: null,
   };
 
-  if (lead.name.length < 3 || lead.phone.replace(/\D/g, '').length < 10) {
+  if (lead.name.length < 3 || onlyDigits(lead.phone).length < 10) {
     return sendJson(res, 400, { ok: false, error: 'Nome e WhatsApp são obrigatórios.' });
   }
 
-  let fileUrl = null;
+  let buffer = null;
+  let ext = null;
   if (data.file?.data) {
-    const ext = UPLOAD_EXT[data.file.type] || (/\.(pdf|jpe?g|png|webp|heic)$/i.exec(data.file.name || '')?.[0].toLowerCase() ?? null);
+    ext = UPLOAD_EXT[data.file.type] || /\.(pdf|jpe?g|png|webp|heic)$/i.exec(data.file.name || '')?.[0].toLowerCase().replace('.jpeg', '.jpg');
     if (!ext) return sendJson(res, 400, { ok: false, error: 'Formato de arquivo não aceito.' });
-    const buffer = Buffer.from(data.file.data, 'base64');
-    const token = crypto.randomBytes(18).toString('base64url');
-    const stored = `${lead.id}${ext === '.jpeg' ? '.jpg' : ext}`;
-    await fs.writeFile(path.join(FILES_DIR, stored), buffer);
-    lead.file = { token, stored, originalName: text(data.file.name, 120), size: buffer.length };
-    fileUrl = `${publicOrigin(req)}/conta/${token}`;
+    buffer = Buffer.from(data.file.data, 'base64');
+    lead.file = { token: crypto.randomBytes(18).toString('base64url'), originalName: text(data.file.name, 120) };
   }
 
-  await saveLead(lead);
-  leads.set(lead.id, lead);
-  console.log('Novo cadastro:', lead.id, lead.city, lead.file ? `(conta ${Math.round(lead.file.size / 1024)} KB)` : '(sem conta)');
-  sendJson(res, 201, { ok: true, fileUrl });
+  await store.addLead(lead, buffer, ext);
+  console.log('Novo cadastro:', lead.id, lead.city, partner ? `parceiro ${partner.slug}` : 'direto', buffer ? `(conta ${Math.round(buffer.length / 1024)} KB)` : '');
+  sendJson(res, 201, { ok: true, fileUrl: lead.file ? `${publicOrigin(req)}/conta/${lead.file.token}` : null });
 }
 
-async function handleBillFile(req, res, token) {
-  const lead = [...leads.values()].find((l) => l.file?.token === token);
+function handlePartnerInfo(res, slug) {
+  const partner = store.findPartnerBySlug(slug);
+  if (!partner?.active) return sendJson(res, 404, { ok: false });
+  sendJson(res, 200, { ok: true, slug: partner.slug, name: partner.name, whatsapp: partner.whatsapp });
+}
+
+function handleBillFile(req, res, token) {
+  const lead = store.findLeadByFileToken(token);
   if (!lead || lead.file.deletedAt) {
-    return send(res, 404, notFoundPage('Esta conta não está mais disponível. Ela pode ter sido removida ou expirado.'), { 'Content-Type': MIME['.html'] });
+    return sendHtml(res, 404, views.messagePage('Esta conta não está mais disponível. Ela pode ter sido removida ou expirado.'));
   }
-  const filePath = path.join(FILES_DIR, lead.file.stored);
   const ext = path.extname(lead.file.stored);
   res.writeHead(200, {
     'Content-Type': MIME[ext] || 'application/octet-stream',
@@ -246,116 +187,317 @@ async function handleBillFile(req, res, token) {
     'Cache-Control': 'private, no-store',
     'X-Robots-Tag': 'noindex',
   });
-  createReadStream(filePath).on('error', () => res.end()).pipe(res);
+  createReadStream(store.filePath(lead)).on('error', () => res.end()).pipe(res);
 }
 
-async function handlePainel(req, res, url) {
-  const ip = clientIp(req);
-  if (loginBlocked(ip)) return send(res, 429, 'Muitas tentativas de senha. Tente de novo em 15 minutos.', { 'Content-Type': MIME['.txt'] });
-  if (!isAdmin(req)) {
-    // Primeiro acesso (sem senha digitada) não conta como erro.
-    if (req.headers.authorization) registerLoginFailure(ip);
-    return askLogin(res);
-  }
+// ---------------------------------------------------------------------------
+// Painel
+// ---------------------------------------------------------------------------
 
-  const deleteMatch = url.pathname.match(/^\/painel\/(excluir|apagar-conta)\/([\w-]+)$/);
-  if (req.method === 'POST' && deleteMatch) {
-    if (!sameOrigin(req)) return send(res, 403, 'Origem inválida.');
-    const [, action, id] = deleteMatch;
-    if (action === 'excluir') await deleteLead(id);
-    else {
-      const lead = leads.get(id);
-      if (lead?.file && !lead.file.deletedAt) {
-        await removeFile(lead);
-        await saveLead(lead);
-      }
+const FLASH = {
+  salvo: ['ok', 'Alterações salvas.'],
+  excluido: ['ok', 'Cadastro excluído.'],
+  conta: ['ok', 'Arquivo da conta apagado.'],
+  parceiro: ['ok', 'Parceiro cadastrado. Copie o link e envie para ele.'],
+  'parceiro-salvo': ['ok', 'Parceiro atualizado.'],
+  'parceiro-excluido': ['ok', 'Parceiro excluído.'],
+  'erro-whats': ['err', 'WhatsApp inválido. Use DDD + número, ex.: (54) 99999-9999.'],
+  'erro-usuario': ['err', 'Esse usuário já existe. Escolha outro.'],
+  'erro-campos': ['err', 'Preencha todos os campos (senha com pelo menos 6 caracteres).'],
+};
+const flashFrom = (url) => {
+  const f = FLASH[url.searchParams.get('msg')];
+  return f ? { type: f[0], text: f[1] } : null;
+};
+
+// Cadastros que o usuário pode ver.
+const visibleLeads = (user) => {
+  const all = [...store.leads.values()];
+  return user.role === 'admin' ? all : all.filter((l) => l.partnerId === user.partner.id);
+};
+const canEditLead = (user, lead) => lead && (user.role === 'admin' || lead.partnerId === user.partner.id);
+
+function periodStart(periodo) {
+  const nowLocal = new Date(Date.now() + TZ_OFFSET_MS);
+  const startOfDay = Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth(), nowLocal.getUTCDate()) - TZ_OFFSET_MS;
+  switch (periodo) {
+    case 'hoje':
+      return startOfDay;
+    case '7d':
+      return startOfDay - 6 * 86400000;
+    case '30d':
+      return startOfDay - 29 * 86400000;
+    case 'mes':
+      return Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth(), 1) - TZ_OFFSET_MS;
+    default:
+      return null;
+  }
+}
+
+function applyFilters(leads, query, { ignoreStatus = false } = {}) {
+  const since = periodStart(query.periodo);
+  const q = (query.q || '').trim().toLowerCase();
+  const qDigits = onlyDigits(q);
+  return leads
+    .filter((l) => !since || new Date(l.createdAt).getTime() >= since)
+    .filter((l) => !query.parceiro || (query.parceiro === 'direto' ? !l.partnerId : l.partnerId === query.parceiro))
+    .filter((l) => ignoreStatus || !query.status || l.status === query.status)
+    .filter(
+      (l) =>
+        !q ||
+        l.name.toLowerCase().includes(q) ||
+        (l.city || '').toLowerCase().includes(q) ||
+        (qDigits.length >= 4 && onlyDigits(l.phone).includes(qDigits))
+    )
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+const leadKwh = (l) => l.kwhReal ?? l.kwhEstimated ?? 0;
+
+function computeStats(leads) {
+  const byStatus = {};
+  let kwhTotal = 0;
+  let kwhConfirmed = 0;
+  let kwhActive = 0;
+  let billTotal = 0;
+  for (const l of leads) {
+    byStatus[l.status] = (byStatus[l.status] || 0) + 1;
+    kwhTotal += leadKwh(l);
+    if (l.kwhReal != null) kwhConfirmed += l.kwhReal;
+    if (l.status === 'ativado') kwhActive += leadKwh(l);
+    billTotal += l.billValue || 0;
+  }
+  return { total: leads.length, byStatus, kwhTotal, kwhConfirmed, kwhActive, billTotal };
+}
+
+function statsByPartner(leads) {
+  const map = new Map();
+  for (const l of leads) {
+    const key = l.partnerId || null;
+    const s = map.get(key) || { total: 0, active: 0, kwh: 0, kwhActive: 0 };
+    s.total++;
+    s.kwh += leadKwh(l);
+    if (l.status === 'ativado') {
+      s.active++;
+      s.kwhActive += leadKwh(l);
     }
-    return send(res, 303, '', { Location: '/painel' });
+    map.set(key, s);
   }
-
-  if (req.method !== 'GET' || url.pathname !== '/painel') return send(res, 404, 'Não encontrado.');
-  send(res, 200, painelPage(req), { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
+  return map;
 }
 
-// ---------------------------------------------------------------------------
-// Páginas HTML do painel
-// ---------------------------------------------------------------------------
+function storageInfo() {
+  let bytes = 0;
+  let files = 0;
+  for (const l of store.leads.values()) {
+    if (l.file && !l.file.deletedAt) {
+      bytes += l.file.size || 0;
+      files++;
+    }
+  }
+  return { bytes, files };
+}
 
-const brl = (v) => (v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }));
-const formatSize = (b) => (b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
-const formatDate = (iso) =>
-  new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+function dashboard(req, res, url, user) {
+  const query = Object.fromEntries(['q', 'periodo', 'parceiro', 'status'].map((k) => [k, url.searchParams.get(k) || '']).filter(([, v]) => v));
+  if (user.role !== 'admin') delete query.parceiro;
+  const base = visibleLeads(user);
+  const forStats = applyFilters(base, query, { ignoreStatus: true });
+  const leads = applyFilters(base, query);
+  const partners = [...store.partners.values()].sort((a, b) => a.name.localeCompare(b.name));
 
-const pageShell = (title, body) => `<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex"><title>${escapeHtml(title)}</title><link rel="icon" href="/favicon.png">
-<style>
-:root{--brand:#008F3F;--brand-dark:#00702F;--ink:#0F1A14;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:#334155}
-header{background:#fff;border-bottom:1px solid var(--line);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0}
-header img{height:34px}main{max-width:960px;margin:0 auto;padding:16px}
-h1{font-size:22px;color:var(--ink);margin:8px 0 4px}.sub{color:var(--muted);font-size:14px;margin:0 0 16px}
-.stats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:13px}.stat b{display:block;font-size:18px;color:var(--ink)}
-.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:10px}
-.row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 16px;align-items:baseline}
-.name{font-weight:700;color:var(--ink);font-size:16px}.date{color:var(--muted);font-size:12px}
-.meta{font-size:14px;margin:6px 0 10px;line-height:1.6}.meta span{white-space:nowrap;margin-right:12px}
-.actions{display:flex;flex-wrap:wrap;gap:8px}form{margin:0}
-.btn{display:inline-block;border:1px solid var(--line);background:#fff;color:#334155;border-radius:10px;padding:8px 12px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer}
-.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}.btn.wa{background:#25D366;border-color:#25D366;color:#fff}
-.btn.danger{color:#b91c1c;border-color:#fecaca}.btn.danger:hover{background:#fef2f2}
-.tag{font-size:12px;color:var(--muted)}.empty{text-align:center;color:var(--muted);padding:48px 0}
-</style></head><body>${body}</body></html>`;
+  let ranking = [];
+  if (user.role === 'admin') {
+    ranking = [...statsByPartner(forStats)]
+      .map(([id, s]) => ({ id, name: id ? store.partners.get(id)?.name ?? 'Parceiro removido' : 'Eletrodara (direto)', ...s }))
+      .sort((a, b) => b.total - a.total);
+  }
 
-function painelPage(req) {
-  const list = [...leads.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const withFile = list.filter((l) => l.file && !l.file.deletedAt).length;
-  const origin = publicOrigin(req);
-
-  const cards = list
-    .map((l) => {
-      const phoneDigits = l.phone.replace(/\D/g, '');
-      const waClient = `https://wa.me/55${phoneDigits}`;
-      let fileBlock = '<span class="tag">Sem conta anexada</span>';
-      if (l.file?.deletedAt) fileBlock = '<span class="tag">Conta já removida</span>';
-      else if (l.file) {
-        fileBlock = `<a class="btn primary" href="${origin}/conta/${l.file.token}" target="_blank" rel="noopener">Ver conta (${formatSize(l.file.size)})</a>
-        <form method="post" action="/painel/apagar-conta/${l.id}" onsubmit="return confirm('Apagar só o arquivo da conta de ${escapeHtml(l.name)}? O cadastro continua na lista.')"><button class="btn danger">Apagar conta</button></form>`;
-      }
-      return `<div class="card">
-  <div class="row"><span class="name">${escapeHtml(l.name)}</span><span class="date">${formatDate(l.createdAt)}</span></div>
-  <div class="meta">
-    <span>📱 ${escapeHtml(l.phone)}</span><span>📍 ${escapeHtml(l.city || '—')}</span><span>🏢 ${escapeHtml(l.distributor || '—')}</span>
-    <span>💰 Conta ${brl(l.billValue)}</span><span>📉 ${brl(l.monthlySavingsMin)} a ${brl(l.monthlySavings)}/mês</span>
-    ${l.seller ? `<span>🧑‍💼 Vendedor ${escapeHtml(l.seller)}</span>` : ''}
-  </div>
-  <div class="actions">
-    <a class="btn wa" href="${waClient}" target="_blank" rel="noopener">Chamar no WhatsApp</a>
-    ${fileBlock}
-    <form method="post" action="/painel/excluir/${l.id}" onsubmit="return confirm('Excluir o cadastro de ${escapeHtml(l.name)} e a conta dele? Não dá para desfazer.')"><button class="btn danger">Excluir cadastro</button></form>
-  </div>
-</div>`;
+  sendHtml(
+    res,
+    200,
+    views.dashboardPage({
+      user,
+      leads,
+      allPartners: partners,
+      stats: computeStats(forStats),
+      ranking,
+      query,
+      flash: flashFrom(url),
+      origin: publicOrigin(req),
+      storage: storageInfo(),
     })
-    .join('\n');
-
-  return pageShell(
-    'Painel de cadastros — Eletrodara',
-    `<header><img src="/logo.png" alt="Eletrodara"><a class="btn" href="/painel">Atualizar</a></header>
-<main>
-  <h1>Cadastros</h1>
-  <p class="sub">Contas de luz são apagadas automaticamente ${FILE_RETENTION_DAYS} dias após o cadastro.</p>
-  <div class="stats">
-    <div class="stat"><b>${list.length}</b>cadastros</div>
-    <div class="stat"><b>${withFile}</b>contas guardadas</div>
-    <div class="stat"><b>${formatSize(storageBytes())}</b>espaço usado</div>
-  </div>
-  ${cards || '<p class="empty">Nenhum cadastro ainda.</p>'}
-</main>`
   );
 }
 
-const notFoundPage = (msg) =>
-  pageShell('Não encontrado — Eletrodara', `<header><img src="/logo.png" alt="Eletrodara"></header><main><p class="empty">${escapeHtml(msg)}</p></main>`);
+function exportCsv(req, res, url, user) {
+  const query = Object.fromEntries(['q', 'periodo', 'parceiro', 'status'].map((k) => [k, url.searchParams.get(k) || '']).filter(([, v]) => v));
+  if (user.role !== 'admin') delete query.parceiro;
+  const leads = applyFilters(visibleLeads(user), query);
+  const origin = publicOrigin(req);
+  const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const statusLabel = (id) => STATUSES.find((s) => s.id === id)?.label ?? id;
+  const header = ['Data', 'Nome', 'WhatsApp', 'Cidade', 'Distribuidora', 'Conta (R$/mês)', 'kWh estimado', 'kWh real', 'Status', 'Parceiro', 'Anotações', 'Conta de luz'];
+  const lines = leads.map((l) =>
+    [
+      new Date(new Date(l.createdAt).getTime() + TZ_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' '),
+      l.name,
+      l.phone,
+      l.city,
+      l.distributor,
+      l.billValue,
+      l.kwhEstimated,
+      l.kwhReal,
+      statusLabel(l.status),
+      l.partnerId ? store.partners.get(l.partnerId)?.name ?? '' : 'Eletrodara (direto)',
+      l.notes,
+      l.file && !l.file.deletedAt ? `${origin}/conta/${l.file.token}` : '',
+    ]
+      .map(cell)
+      .join(';')
+  );
+  // BOM + ponto e vírgula para o Excel em português abrir certo.
+  const csv = '﻿' + [header.map(cell).join(';'), ...lines].join('\r\n');
+  send(res, 200, csv, {
+    'Content-Type': MIME['.csv'],
+    'Content-Disposition': `attachment; filename="cadastros-eletrodara-${new Date().toISOString().slice(0, 10)}.csv"`,
+    'Cache-Control': 'no-store',
+  });
+}
+
+async function handlePainel(req, res, url) {
+  const p = url.pathname.replace(/\/+$/, '') || '/painel';
+  const ip = clientIp(req);
+
+  // --- Login / logout
+  if (p === '/painel/login') {
+    if (req.method === 'GET') return sendHtml(res, 200, views.loginPage());
+    if (auth.loginBlocked(ip)) return sendHtml(res, 429, views.loginPage('Muitas tentativas. Tente de novo em 15 minutos.'));
+    const form = await readForm(req);
+    const cookie = auth.login(ip, form.username, form.password);
+    if (!cookie) return sendHtml(res, 401, views.loginPage('Usuário ou senha incorretos.'));
+    return redirect(res, '/painel', { 'Set-Cookie': cookie });
+  }
+  if (p === '/painel/sair') return redirect(res, '/painel/login', { 'Set-Cookie': auth.clearCookie() });
+
+  const user = auth.currentUser(req);
+  if (!user) return redirect(res, '/painel/login');
+  const isAdmin = user.role === 'admin';
+  if (req.method === 'POST' && !sameOrigin(req)) return send(res, 403, 'Origem inválida.');
+
+  // --- Visão geral e exportação
+  if (p === '/painel' && req.method === 'GET') return dashboard(req, res, url, user);
+  if (p === '/painel/exportar.csv') return exportCsv(req, res, url, user);
+  if (p === '/painel/meu-link' && !isAdmin) return sendHtml(res, 200, views.myLinkPage({ user, origin: publicOrigin(req) }));
+
+  // Volta para a mesma lista (com filtros) depois de salvar.
+  const back = (msg, anchor = '') => {
+    let target = '/painel';
+    try {
+      const ref = new URL(req.headers.referer);
+      if (ref.pathname.startsWith('/painel')) {
+        ref.searchParams.set('msg', msg);
+        target = `${ref.pathname}${ref.search}`;
+      }
+    } catch {
+      target = `/painel?msg=${msg}`;
+    }
+    return redirect(res, target + anchor);
+  };
+
+  // --- Cadastros
+  const leadMatch = p.match(/^\/painel\/lead\/([\w-]+)(?:\/(apagar-conta|excluir))?$/);
+  if (leadMatch && req.method === 'POST') {
+    const [, id, action] = leadMatch;
+    const lead = store.leads.get(id);
+    if (!canEditLead(user, lead)) return send(res, 404, 'Não encontrado.');
+    if (action === 'excluir') {
+      if (!isAdmin) return send(res, 403, 'Só o administrador pode excluir cadastros.');
+      await store.deleteLead(id);
+      return back('excluido');
+    }
+    if (action === 'apagar-conta') {
+      await store.removeLeadFile(lead);
+      return back('conta', `#c-${id}`);
+    }
+    const form = await readForm(req);
+    const kwh = form.kwhReal === '' ? null : Math.max(0, Math.round(Number(form.kwhReal)));
+    await store.updateLead(
+      id,
+      {
+        status: STATUS_IDS.includes(form.status) ? form.status : lead.status,
+        kwhReal: Number.isFinite(kwh) ? kwh : lead.kwhReal,
+        notes: String(form.notes ?? '').slice(0, 1000),
+      },
+      user.name
+    );
+    return back('salvo', `#c-${id}`);
+  }
+
+  if (!isAdmin) return send(res, 403, 'Acesso restrito ao administrador.');
+
+  // --- Parceiros (admin)
+  if (p === '/painel/parceiros' && req.method === 'GET') {
+    const partners = [...store.partners.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return sendHtml(
+      res,
+      200,
+      views.partnersPage({ user, partners, statsByPartner: statsByPartner([...store.leads.values()]), origin: publicOrigin(req), flash: flashFrom(url) })
+    );
+  }
+  if (p === '/painel/parceiros' && req.method === 'POST') {
+    const form = await readForm(req);
+    const name = String(form.name || '').trim().slice(0, 80);
+    const username = String(form.username || '').trim().toLowerCase().slice(0, 40);
+    const password = String(form.password || '');
+    const whatsapp = normalizeWhatsapp(form.whatsapp);
+    if (!name || !username || password.length < 6) return redirect(res, '/painel/parceiros?msg=erro-campos');
+    if (!whatsapp) return redirect(res, '/painel/parceiros?msg=erro-whats');
+    if (username === ADMIN_USER.toLowerCase() || store.findPartnerByUsername(username)) return redirect(res, '/painel/parceiros?msg=erro-usuario');
+    await store.addPartner({ name, whatsapp, username, password });
+    return redirect(res, '/painel/parceiros?msg=parceiro');
+  }
+  const partnerMatch = p.match(/^\/painel\/parceiros\/([\w-]+)(?:\/(ativar|desativar|excluir))?$/);
+  if (partnerMatch && req.method === 'POST') {
+    const [, id, action] = partnerMatch;
+    if (!store.partners.has(id)) return send(res, 404, 'Não encontrado.');
+    if (action === 'excluir') {
+      await store.deletePartner(id);
+      return redirect(res, '/painel/parceiros?msg=parceiro-excluido');
+    }
+    if (action) {
+      await store.updatePartner(id, { active: action === 'ativar' });
+      return redirect(res, '/painel/parceiros?msg=parceiro-salvo');
+    }
+    const form = await readForm(req);
+    const whatsapp = normalizeWhatsapp(form.whatsapp);
+    if (!whatsapp) return redirect(res, '/painel/parceiros?msg=erro-whats');
+    if (form.password && form.password.length < 6) return redirect(res, '/painel/parceiros?msg=erro-campos');
+    await store.updatePartner(id, { name: String(form.name || '').trim().slice(0, 80), whatsapp, password: form.password || undefined });
+    return redirect(res, '/painel/parceiros?msg=parceiro-salvo');
+  }
+
+  // --- Configurações (admin)
+  if (p === '/painel/config' && req.method === 'GET') {
+    return sendHtml(res, 200, views.settingsPage({ user, settings: store.settings, flash: flashFrom(url) }));
+  }
+  if (p === '/painel/config' && req.method === 'POST') {
+    const form = await readForm(req);
+    const tariff = Number(String(form.tariffPerKwh).replace(',', '.'));
+    if (Number.isFinite(tariff) && tariff >= 0.1 && tariff <= 5) {
+      await store.updateSettings({ tariffPerKwh: tariff });
+      for (const lead of store.leads.values()) {
+        if (lead.billValue) {
+          lead.kwhEstimated = Math.round(lead.billValue / tariff);
+          await store.updateLead(lead.id, {}, 'sistema');
+        }
+      }
+    }
+    return redirect(res, '/painel/config?msg=salvo');
+  }
+
+  send(res, 404, 'Não encontrado.');
+}
 
 // ---------------------------------------------------------------------------
 // Arquivos estáticos (dist/) com gzip em memória e fallback para index.html
@@ -397,8 +539,10 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname === '/api/leads' && req.method === 'POST') return await handleCreateLead(req, res);
     if (url.pathname === '/api/health') return sendJson(res, 200, { ok: true });
+    const partnerApi = url.pathname.match(/^\/api\/parceiro\/([\w-]+)$/);
+    if (partnerApi) return handlePartnerInfo(res, partnerApi[1]);
     const conta = url.pathname.match(/^\/conta\/([\w-]{10,})$/);
-    if (conta) return await handleBillFile(req, res, conta[1]);
+    if (conta) return handleBillFile(req, res, conta[1]);
     if (url.pathname === '/painel' || url.pathname.startsWith('/painel/')) return await handlePainel(req, res, url);
     if (req.method === 'GET' || req.method === 'HEAD') return await serveStatic(req, res, url);
     send(res, 405, 'Método não permitido.');
@@ -409,8 +553,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-await loadLeads();
-await cleanupOldFiles();
-setInterval(() => cleanupOldFiles().catch(console.error), 6 * 60 * 60 * 1000);
-if (!ADMIN_PASSWORD) console.warn('ADMIN_PASSWORD não definido — painel desativado.');
+await store.cleanupOldFiles(FILE_RETENTION_DAYS);
+setInterval(() => store.cleanupOldFiles(FILE_RETENTION_DAYS).catch(console.error), 6 * 60 * 60 * 1000);
+if (!ADMIN_PASSWORD) console.warn('ADMIN_PASSWORD não definido — login de administrador desativado.');
 server.listen(PORT, () => console.log(`Servidor ouvindo na porta ${PORT}`));

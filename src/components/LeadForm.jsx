@@ -82,7 +82,7 @@ Olá! Fiz a simulação no site e quero ativar meu desconto.`;
 const inputClass =
   'w-full bg-white border border-slate-300 rounded-xl px-4 py-3.5 text-ink text-base placeholder:text-slate-400 focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none transition';
 
-export function LeadForm() {
+export function LeadForm({ partner, whatsappNumber }) {
   const fileInputRef = useRef(null);
   const [billValue, setBillValue] = useState(SITE_CONFIG.defaultBill);
   const [form, setForm] = useState({ name: '', phone: '', city: '', distributor: 'RGE' });
@@ -136,7 +136,7 @@ export function LeadForm() {
       annualSavingsMin,
       annualSavings,
       hasFile: Boolean(file),
-      seller: new URLSearchParams(window.location.search).get('vendedor') || '',
+      partner: partner?.slug || "",
       createdAt: new Date().toISOString(),
       source: window.location.href,
     };
@@ -153,7 +153,7 @@ export function LeadForm() {
       console.error('Falha ao salvar cadastro', err);
     }
 
-    const waUrl = `https://wa.me/${SITE_CONFIG.whatsappNumber}?text=${encodeURIComponent(buildMessage(lead, fileUrl, Boolean(file)))}`;
+    const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(buildMessage(lead, fileUrl, Boolean(file)))}`;
     if (waWindow) waWindow.location.href = waUrl;
     else window.location.href = waUrl;
 
@@ -169,7 +169,7 @@ export function LeadForm() {
         </div>
         <h3 className="text-2xl font-extrabold text-ink mb-2">Cadastro enviado!</h3>
         <p className="text-slate-600 mb-4">
-          Abrimos o WhatsApp da nossa equipe com seus dados. <strong className="text-ink">Só falta tocar em enviar</strong> na conversa.
+          Abrimos o WhatsApp {partner ? `de ${partner.name}` : "da nossa equipe"} com seus dados. <strong className="text-ink">Só falta tocar em enviar</strong> na conversa.
         </p>
         {result.needsAttachment && (
           <p className="text-sm text-sun-text bg-sun-light border border-sun/50 rounded-xl p-3 mb-4">
@@ -193,6 +193,11 @@ export function LeadForm() {
       <div>
         <h2 className="text-2xl font-extrabold text-ink">Simule sua economia</h2>
         <p className="text-sm text-slate-500 mt-1">Cadastro gratuito e sem compromisso.</p>
+        {partner && (
+          <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-brand-dark bg-brand-light rounded-lg px-2.5 py-1">
+            Atendimento: <strong>{partner.name}</strong>, parceiro Eletrodara
+          </p>
+        )}
       </div>
 
       {/* Simulador */}

@@ -8,7 +8,10 @@ Landing page de captação de cadastros da **Eletrodara Gestão de Energia**. Fo
 
 - **Hero + formulário de cadastro** acima da dobra.
 - **Cadastros e contas salvos no próprio servidor** (`server/server.mjs`, sem dependências). A mensagem do WhatsApp leva o link da conta.
-- **Painel com senha** em `/painel`: lista os cadastros, abre/apaga contas e exclui cadastros. Contas são apagadas sozinhas após 30 dias.
+- **Painel** em `/painel` (login por usuário/senha):
+  - **Admin** (`ADMIN_USER`/`ADMIN_PASSWORD`): vê tudo — cadastros, kWh/mês (estimado e confirmado), ativados, ranking de parceiros, filtros, exportação CSV; cadastra parceiros e ajusta a tarifa média.
+  - **Parceiro**: link próprio `/p/<slug>` (o cliente cai no WhatsApp dele) e vê/atualiza só os próprios cadastros.
+  - Contas de luz são apagadas sozinhas após 30 dias.
 - **Como funciona** em 3 passos, **perguntas frequentes** e dados institucionais.
 - Textos e dados da empresa centralizados em `src/config/site.js`.
 

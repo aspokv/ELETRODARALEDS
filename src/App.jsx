@@ -1,11 +1,10 @@
 import React from 'react';
 import { Header } from './components/Header';
 import { LeadForm } from './components/LeadForm';
-import { SITE_CONFIG } from './config/site';
+import { SITE_CONFIG } from "./config/site";
+import { usePartner } from "./lib/partner";
 
-const whatsappUrl = `https://wa.me/${SITE_CONFIG.whatsappNumber}?text=${encodeURIComponent(
-  'Olá! Vi o site da Eletrodara e quero saber mais sobre o desconto na minha conta de luz.'
-)}`;
+const WHATSAPP_GREETING = 'Olá! Vi o site da Eletrodara e quero saber mais sobre o desconto na minha conta de luz.';
 
 function Check() {
   return (
@@ -18,6 +17,9 @@ function Check() {
 }
 
 export default function App() {
+  const { partner, whatsappNumber } = usePartner();
+  const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(WHATSAPP_GREETING)}`;
+
   return (
     <div id="topo" className="min-h-screen bg-white text-slate-700 font-sans">
       <Header />
@@ -54,7 +56,7 @@ export default function App() {
             </div>
 
             <div id="cadastro" className="scroll-mt-20 bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 min-[400px]:p-5 sm:p-8 shadow-xl shadow-brand/10">
-              <LeadForm />
+              <LeadForm partner={partner} whatsappNumber={whatsappNumber} />
             </div>
           </div>
         </section>
