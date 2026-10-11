@@ -1,5 +1,5 @@
-# Stage 1: Build the React + Vite application
-FROM node:20-alpine AS builder
+﻿# Stage 1: Build the React + Vite application
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -7,6 +7,8 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
+ARG VITE_LEAD_ENDPOINT
+ENV VITE_LEAD_ENDPOINT=$VITE_LEAD_ENDPOINT
 RUN npm run build
 
 # Stage 2: Ultra-lightweight production server with Nginx

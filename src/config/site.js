@@ -1,0 +1,78 @@
+export const SITE_CONFIG = {
+  company: "Eletrodara Gestão de Energia Ltda.",
+  whatsappNumber: "5554997143102",
+  phoneFormatted: "(54) 99714-3102",
+  cnpj: "61.326.080/0001-64",
+  headquarters: "Parque Tecnológico TecnoUCS — Universidade de Caxias do Sul / RS",
+  maxDiscount: 25,
+
+  // URL que recebe os cadastros (ex.: Web App do Google Apps Script ligado a uma planilha).
+  // Defina VITE_LEAD_ENDPOINT no arquivo .env — veja docs/google-sheets.md.
+  leadEndpoint: import.meta.env.VITE_LEAD_ENDPOINT || "",
+
+  // Simulador
+  minBill: 250,
+  maxBill: 10000,
+  defaultBill: 600,
+
+  distributors: [
+    { value: "RGE", label: "RGE (RS)" },
+    { value: "CEEE Equatorial", label: "CEEE Equatorial (RS)" },
+    { value: "CPFL", label: "CPFL (SP)" },
+    { value: "CEMIG", label: "CEMIG (MG)" },
+    { value: "ENEL", label: "Enel (SP/RJ/CE)" },
+    { value: "Copel", label: "Copel (PR)" },
+    { value: "Celesc", label: "Celesc (SC)" },
+    { value: "Neoenergia", label: "Neoenergia" },
+    { value: "Outra", label: "Outra distribuidora" },
+  ],
+
+  steps: [
+    {
+      title: "Simule e envie sua conta",
+      text: "Veja quanto vai economizar, anexe a foto ou PDF da sua conta de luz e preencha nome, WhatsApp e cidade.",
+    },
+    {
+      title: "Analisamos sua conta",
+      text: "Seus dados e a conta chegam direto no WhatsApp da nossa equipe, que confere a fatura e confirma seu desconto.",
+    },
+    {
+      title: "Desconto todo mês",
+      text: "Você recebe créditos de energia solar direto na conta da sua distribuidora. Nada muda na sua casa ou empresa.",
+    },
+  ],
+
+  benefits: [
+    "Cadastro e adesão gratuitos",
+    "Sem obras e sem placas no telhado",
+    "Sem fidelidade — cancele quando quiser",
+    "Continua com a mesma distribuidora",
+  ],
+
+  faq: [
+    {
+      q: "Preciso pagar alguma coisa?",
+      a: "Não. O cadastro, a adesão e a mensalidade são gratuitos. Você só passa a pagar menos na sua conta de luz.",
+    },
+    {
+      q: "Como funciona sem instalar placas?",
+      a: "A energia é gerada em usinas solares parceiras e entregue na rede da sua distribuidora. Pela Lei Federal 14.300/2022, regulamentada pela ANEEL, essa energia vira créditos que abatem o valor da sua fatura.",
+    },
+    {
+      q: "Isso é legal? Não é golpe?",
+      a: "É a Geração Distribuída compartilhada, prevista na Lei Federal 14.300/2022 e regulamentada pela ANEEL. A Eletrodara é uma empresa registrada (CNPJ 61.326.080/0001-64), sediada no Parque Tecnológico TecnoUCS, em Caxias do Sul.",
+    },
+    {
+      q: "Corro risco de ficar sem luz?",
+      a: "Não. Você continua ligado na mesma distribuidora, pelos mesmos fios e com o mesmo medidor. Só muda o valor da fatura.",
+    },
+    {
+      q: "Tem fidelidade ou multa?",
+      a: "Não há fidelidade obrigatória. Você pode cancelar quando quiser.",
+    },
+    {
+      q: "Quem pode participar?",
+      a: "Residências e empresas com conta de luz média a partir de R$ 250 por mês, sendo o titular da unidade consumidora ou representante legal do imóvel.",
+    },
+  ],
+};

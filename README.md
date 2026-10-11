@@ -1,15 +1,15 @@
-# ELETRODARA // AETHER — Energia Solar por Assinatura
+# Eletrodara — Energia Solar por Assinatura
 
-Experiência web 3D interativa de alto padrão (padrão Apple × Porsche × Linear) desenvolvida para a **Eletrodara Gestão de Energia**, com o objetivo de eliminar a percepção de golpe (*"é bom demais para ser verdade"*) e converter leads com máxima clareza e autoridade.
+Landing page de captação de cadastros da **Eletrodara Gestão de Energia**. Foco único: cadastro gratuito rápido (nome, WhatsApp, cidade e faixa da conta de luz).
 
 ---
 
-## ⚡ Diferenciais do Projeto
+## ⚡ Estrutura
 
-- **Interatividade 3D em Tempo Real**: Three.js, React Three Fiber e Drei com física de iluminação de estúdio (PBR), rotação inercial, visão explodida reativa ao scroll e modo de inspeção 360° livre.
-- **Simulador & Ativação em Tela Única**: Controle interativo de R$ 250 a R$ 10.000 com cálculo instantâneo de economia mensal e anual, acompanhado de campo de anexo de fatura (PDF ou foto) na mesma tela.
-- **Filtro de Qualificação & Despacho para WhatsApp**: Homologação direta para o WhatsApp oficial com dados pré-preenchidos e documento selecionado.
-- **Total Conformidade Legal**: Baseado na Lei Federal 14.300/2022 e regulamentações da ANEEL (Geração Distribuída compartilhada).
+- **Hero + formulário de cadastro** acima da dobra.
+- **Cadastros salvos** numa planilha Google via Apps Script (veja [docs/google-sheets.md](docs/google-sheets.md)); após o cadastro, a pessoa pode seguir para o WhatsApp com a mensagem pronta.
+- **Como funciona** em 3 passos, **perguntas frequentes** e dados institucionais.
+- Textos e dados da empresa centralizados em `src/config/site.js`.
 
 ---
 
@@ -17,9 +17,6 @@ Experiência web 3D interativa de alto padrão (padrão Apple × Porsche × Line
 
 - **Frontend**: React 19 + Vite 8
 - **Estilização**: Tailwind CSS 3.4
-- **Engine 3D**: Three.js + `@react-three/fiber` + `@react-three/drei`
-- **Animações**: GSAP (ScrollTrigger) + Framer Motion
-- **Gerenciamento de Estado**: Zustand
 
 ---
 
@@ -30,13 +27,16 @@ Experiência web 3D interativa de alto padrão (padrão Apple × Porsche × Line
 npm install
 ```
 
-### 2. Rodar em Desenvolvimento
+### 2. Configurar onde salvar os cadastros
+Copie `.env.example` para `.env` e preencha `VITE_LEAD_ENDPOINT` (passo a passo em [docs/google-sheets.md](docs/google-sheets.md)).
+
+### 3. Rodar em Desenvolvimento
 ```bash
 npm run dev
 ```
 Acesse [http://localhost:5173](http://localhost:5173).
 
-### 3. Build de Produção
+### 4. Build de Produção
 ```bash
 npm run build
 ```
