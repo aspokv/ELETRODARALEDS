@@ -63,7 +63,7 @@ Olá! Fiz a simulação no site e quero ativar meu desconto.`;
 };
 
 const inputClass =
-  'w-full bg-white/[0.04] border border-white/15 rounded-xl px-4 py-3.5 text-white text-base placeholder:text-slate-500 focus:border-emerald-400 focus:bg-white/[0.06] outline-none transition-colors';
+  'w-full bg-white border border-slate-300 rounded-xl px-4 py-3.5 text-ink text-base placeholder:text-slate-400 focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none transition';
 
 export function LeadForm() {
   const fileInputRef = useRef(null);
@@ -143,15 +143,15 @@ export function LeadForm() {
   if (status === 'done' && result) {
     return (
       <div className="text-center py-4">
-        <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-400 text-emerald-400 flex items-center justify-center text-2xl mx-auto mb-4">
+        <div className="w-14 h-14 rounded-full bg-brand-light border border-brand text-brand flex items-center justify-center text-2xl mx-auto mb-4">
           ✓
         </div>
-        <h3 className="text-2xl font-extrabold text-white mb-2">Cadastro enviado!</h3>
-        <p className="text-slate-300 mb-4">
-          Abrimos o WhatsApp da nossa equipe com seus dados. <strong className="text-white">Só falta tocar em enviar</strong> na conversa.
+        <h3 className="text-2xl font-extrabold text-ink mb-2">Cadastro enviado!</h3>
+        <p className="text-slate-600 mb-4">
+          Abrimos o WhatsApp da nossa equipe com seus dados. <strong className="text-ink">Só falta tocar em enviar</strong> na conversa.
         </p>
         {result.needsAttachment && (
-          <p className="text-sm text-amber-200 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-4">
+          <p className="text-sm text-sun-text bg-sun-light border border-sun/50 rounded-xl p-3 mb-4">
             Por segurança, o navegador não anexa arquivos sozinho: na conversa, toque no clipe 📎 e envie <strong>{result.fileName}</strong>.
           </p>
         )}
@@ -170,15 +170,15 @@ export function LeadForm() {
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-5">
       <div>
-        <h2 className="text-2xl font-extrabold text-white">Simule sua economia</h2>
-        <p className="text-sm text-slate-400 mt-1">Cadastro gratuito e sem compromisso.</p>
+        <h2 className="text-2xl font-extrabold text-ink">Simule sua economia</h2>
+        <p className="text-sm text-slate-500 mt-1">Cadastro gratuito e sem compromisso.</p>
       </div>
 
       {/* Simulador */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.03] border border-white/10">
+      <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200">
         <div className="flex justify-between items-baseline gap-3 mb-3">
-          <label htmlFor="bill" className="text-sm text-slate-300">Sua conta de luz média</label>
-          <span className="text-2xl font-extrabold text-white tabular-nums">{formatBRL(billValue)}</span>
+          <label htmlFor="bill" className="text-sm font-medium text-slate-700">Sua conta de luz média</label>
+          <span className="text-2xl font-extrabold text-ink tabular-nums">{formatBRL(billValue)}</span>
         </div>
         <input
           id="bill"
@@ -188,7 +188,7 @@ export function LeadForm() {
           step="50"
           value={billValue}
           onChange={(e) => setBillValue(Number(e.target.value))}
-          className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+          className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand"
         />
         <div className="flex justify-between text-xs text-slate-500 mt-1.5">
           <span>{formatBRL(SITE_CONFIG.minBill)}</span>
@@ -196,13 +196,13 @@ export function LeadForm() {
         </div>
 
         <div className="grid grid-cols-2 gap-3 mt-4">
-          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
-            <span className="block text-xs text-emerald-300">Economia por mês</span>
-            <span className="block text-xl font-extrabold text-emerald-400 tabular-nums">{formatBRL(monthlySavings)}</span>
+          <div className="p-3 rounded-xl bg-sun-light border border-sun/50">
+            <span className="block text-xs font-medium text-sun-text">Economia por mês</span>
+            <span className="block text-xl font-extrabold text-brand-dark tabular-nums">{formatBRL(monthlySavings)}</span>
           </div>
-          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
-            <span className="block text-xs text-emerald-300">Economia por ano</span>
-            <span className="block text-xl font-extrabold text-emerald-400 tabular-nums">{formatBRL(annualSavings)}</span>
+          <div className="p-3 rounded-xl bg-sun-light border border-sun/50">
+            <span className="block text-xs font-medium text-sun-text">Economia por ano</span>
+            <span className="block text-xl font-extrabold text-brand-dark tabular-nums">{formatBRL(annualSavings)}</span>
           </div>
         </div>
         <p className="text-xs text-slate-500 mt-2">Estimativa com desconto de até {SITE_CONFIG.maxDiscount}%.</p>
@@ -210,7 +210,7 @@ export function LeadForm() {
 
       {/* Conta de luz */}
       <div>
-        <span className="block text-sm text-slate-300 mb-1.5">Foto ou PDF da sua conta de luz</span>
+        <span className="block text-sm font-medium text-slate-700 mb-1.5">Foto ou PDF da sua conta de luz</span>
         <div
           role="button"
           tabIndex={0}
@@ -221,10 +221,10 @@ export function LeadForm() {
           onDrop={(e) => { e.preventDefault(); setIsDragOver(false); pickFile(e.dataTransfer.files?.[0]); }}
           className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors ${
             isDragOver
-              ? 'border-emerald-400 bg-emerald-500/10'
+              ? 'border-brand bg-brand-light'
               : file
-              ? 'border-emerald-500/60 bg-emerald-500/[0.06]'
-              : 'border-white/20 hover:border-emerald-400/50 hover:bg-white/[0.03]'
+              ? 'border-brand/60 bg-brand-light/60'
+              : 'border-slate-300 hover:border-brand hover:bg-brand-light/40'
           }`}
         >
           <input
@@ -237,16 +237,16 @@ export function LeadForm() {
           {file ? (
             <div className="flex items-center justify-between gap-3 text-left">
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-white truncate">📄 {file.name}</div>
-                <div className="text-xs text-emerald-400">Conta anexada</div>
+                <div className="text-sm font-semibold text-ink truncate">📄 {file.name}</div>
+                <div className="text-xs font-medium text-brand">Conta anexada</div>
               </div>
-              <button type="button" onClick={removeFile} className="shrink-0 text-xs text-slate-300 px-3 py-1.5 rounded-lg border border-white/15 hover:bg-white/5">
+              <button type="button" onClick={removeFile} className="shrink-0 text-xs text-slate-600 px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100">
                 Trocar
               </button>
             </div>
           ) : (
             <div>
-              <div className="text-sm font-semibold text-white">📎 Toque para anexar ou tirar uma foto</div>
+              <div className="text-sm font-semibold text-ink">📎 Toque para anexar ou tirar uma foto</div>
               <div className="text-xs text-slate-500 mt-0.5">PDF ou imagem, até {MAX_FILE_MB} MB · opcional, pode enviar depois no WhatsApp</div>
             </div>
           )}
@@ -256,19 +256,19 @@ export function LeadForm() {
       {/* Dados */}
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="sm:col-span-2">
-          <label htmlFor="name" className="block text-sm text-slate-300 mb-1.5">Nome do titular da conta</label>
+          <label htmlFor="name" className="block text-sm font-medium text-slate-700 mb-1.5">Nome do titular da conta</label>
           <input id="name" type="text" autoComplete="name" placeholder="Seu nome completo" value={form.name} onChange={update('name')} className={inputClass} />
         </div>
         <div>
-          <label htmlFor="phone" className="block text-sm text-slate-300 mb-1.5">WhatsApp</label>
+          <label htmlFor="phone" className="block text-sm font-medium text-slate-700 mb-1.5">WhatsApp</label>
           <input id="phone" type="tel" inputMode="numeric" autoComplete="tel-national" placeholder="(54) 99999-9999" value={form.phone} onChange={update('phone')} className={inputClass} />
         </div>
         <div>
-          <label htmlFor="city" className="block text-sm text-slate-300 mb-1.5">Cidade</label>
+          <label htmlFor="city" className="block text-sm font-medium text-slate-700 mb-1.5">Cidade</label>
           <input id="city" type="text" autoComplete="address-level2" placeholder="Ex.: Caxias do Sul" value={form.city} onChange={update('city')} className={inputClass} />
         </div>
         <div className="sm:col-span-2">
-          <label htmlFor="distributor" className="block text-sm text-slate-300 mb-1.5">Distribuidora de energia</label>
+          <label htmlFor="distributor" className="block text-sm font-medium text-slate-700 mb-1.5">Distribuidora de energia</label>
           <select id="distributor" value={form.distributor} onChange={update('distributor')} className={inputClass}>
             {SITE_CONFIG.distributors.map((d) => (
               <option key={d.value} value={d.value} className="text-black">{d.label}</option>
@@ -278,7 +278,7 @@ export function LeadForm() {
       </div>
 
       {error && (
-        <div role="alert" className="p-3 rounded-xl bg-red-950/40 border border-red-500/40 text-red-300 text-sm">
+        <div role="alert" className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
           {error}
         </div>
       )}
@@ -286,10 +286,19 @@ export function LeadForm() {
       <button
         type="submit"
         disabled={status === 'sending'}
-        className="w-full inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-obsidian font-extrabold text-base py-4 px-6 rounded-xl transition-colors shadow-lg shadow-emerald-500/20"
+        className="w-full inline-flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-60 text-white font-extrabold text-base py-4 px-6 rounded-xl transition-colors shadow-lg shadow-brand/25"
       >
         {status === 'sending' ? 'Enviando…' : 'Ativar meu desconto pelo WhatsApp'}
       </button>
+
+      <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
+        <svg className="w-5 h-5 shrink-0 text-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+        </svg>
+        <span>
+          <strong className="text-slate-800">Empresa registrada</strong> · CNPJ {SITE_CONFIG.cnpj} · Sede no Parque Tecnológico TecnoUCS, Caxias do Sul/RS
+        </span>
+      </div>
 
       <p className="text-xs text-slate-500 leading-relaxed">
         Ao enviar, seus dados e sua conta vão para a equipe da Eletrodara pelo WhatsApp, apenas para analisar seu desconto.

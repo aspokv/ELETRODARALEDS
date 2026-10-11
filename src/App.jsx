@@ -9,41 +9,43 @@ const whatsappUrl = `https://wa.me/${SITE_CONFIG.whatsappNumber}?text=${encodeUR
 
 function Check() {
   return (
-    <svg className="w-5 h-5 shrink-0 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
-    </svg>
+    <span className="w-6 h-6 shrink-0 rounded-full bg-brand-light text-brand flex items-center justify-center">
+      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+      </svg>
+    </span>
   );
 }
 
 export default function App() {
   return (
-    <div id="topo" className="min-h-screen bg-obsidian text-slate-100 font-sans">
+    <div id="topo" className="min-h-screen bg-white text-slate-700 font-sans">
       <Header />
 
       <main>
         {/* HERO + CADASTRO */}
-        <section className="relative overflow-hidden">
-          <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[600px] bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        <section className="relative overflow-hidden bg-gradient-to-b from-brand-light via-white to-white">
+          <div className="absolute -top-32 -right-32 w-[480px] h-[480px] bg-sun/20 rounded-full blur-3xl pointer-events-none" />
 
           <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-10 pb-16 sm:pt-16 sm:pb-24 grid lg:grid-cols-[1.1fr_1fr] gap-10 lg:gap-14 items-center">
             <div>
-              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.04] border border-white/10 text-xs text-slate-300 mb-5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-brand/20 text-xs font-medium text-brand-dark mb-5 shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand" />
                 Lei Federal 14.300/2022 · Regulado pela ANEEL
               </span>
 
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-[1.08] mb-5">
-                Economize até <span className="text-emerald-400">{SITE_CONFIG.maxDiscount}%</span> na sua conta de luz.
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-ink leading-[1.08] mb-5">
+                Economize até <span className="text-brand">{SITE_CONFIG.maxDiscount}%</span> na sua conta de luz.
               </h1>
 
-              <p className="text-lg text-slate-300 leading-relaxed mb-7 max-w-xl">
+              <p className="text-lg text-slate-600 leading-relaxed mb-7 max-w-xl">
                 Energia solar por assinatura, sem obras, sem placas e sem investimento. O desconto vem direto na
                 fatura da sua distribuidora.
               </p>
 
               <ul className="grid sm:grid-cols-2 gap-3 max-w-xl">
                 {SITE_CONFIG.benefits.map((b) => (
-                  <li key={b} className="flex items-start gap-2.5 text-slate-200">
+                  <li key={b} className="flex items-start gap-2.5 text-slate-800 font-medium">
                     <Check />
                     <span>{b}</span>
                   </li>
@@ -51,34 +53,34 @@ export default function App() {
               </ul>
             </div>
 
-            <div id="cadastro" className="scroll-mt-24 bg-surface-card border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/60">
+            <div id="cadastro" className="scroll-mt-24 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xl shadow-brand/10">
               <LeadForm />
             </div>
           </div>
         </section>
 
         {/* COMO FUNCIONA */}
-        <section id="como-funciona" className="border-t border-white/5 bg-surface">
+        <section id="como-funciona" className="border-t border-slate-200 bg-slate-50">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight text-center mb-3">Como funciona</h2>
-            <p className="text-slate-400 text-center max-w-2xl mx-auto mb-10">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-ink tracking-tight text-center mb-3">Como funciona</h2>
+            <p className="text-slate-600 text-center max-w-2xl mx-auto mb-10">
               Você continua recebendo a mesma energia, pelos mesmos fios. Só a conta fica menor.
             </p>
 
             <ol className="grid md:grid-cols-3 gap-5">
               {SITE_CONFIG.steps.map((s, i) => (
-                <li key={s.title} className="p-6 rounded-2xl bg-white/[0.02] border border-white/10">
-                  <span className="inline-flex w-9 h-9 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400 font-bold mb-4">
+                <li key={s.title} className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                  <span className="inline-flex w-9 h-9 items-center justify-center rounded-full bg-brand text-white font-bold mb-4">
                     {i + 1}
                   </span>
-                  <h3 className="text-lg font-bold text-white mb-1.5">{s.title}</h3>
-                  <p className="text-slate-400 leading-relaxed">{s.text}</p>
+                  <h3 className="text-lg font-bold text-ink mb-1.5">{s.title}</h3>
+                  <p className="text-slate-600 leading-relaxed">{s.text}</p>
                 </li>
               ))}
             </ol>
 
             <div className="text-center mt-10">
-              <a href="#cadastro" className="inline-flex items-center bg-emerald-500 hover:bg-emerald-400 text-obsidian font-bold px-7 py-3.5 rounded-xl transition-colors">
+              <a href="#cadastro" className="inline-flex items-center bg-brand hover:bg-brand-dark text-white font-bold px-7 py-3.5 rounded-xl transition-colors">
                 Simular minha economia
               </a>
             </div>
@@ -86,18 +88,18 @@ export default function App() {
         </section>
 
         {/* PERGUNTAS FREQUENTES */}
-        <section id="duvidas" className="border-t border-white/5">
+        <section id="duvidas" className="border-t border-slate-200">
           <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight text-center mb-10">Perguntas frequentes</h2>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-ink tracking-tight text-center mb-10">Perguntas frequentes</h2>
 
             <div className="space-y-3">
               {SITE_CONFIG.faq.map((item) => (
-                <details key={item.q} className="group rounded-2xl bg-white/[0.02] border border-white/10 open:border-emerald-500/30">
-                  <summary className="flex items-center justify-between gap-4 cursor-pointer list-none p-5 font-semibold text-white">
+                <details key={item.q} className="group rounded-2xl bg-white border border-slate-200 open:border-brand/40 open:shadow-sm">
+                  <summary className="flex items-center justify-between gap-4 cursor-pointer list-none p-5 font-semibold text-ink">
                     {item.q}
-                    <span className="text-emerald-400 text-xl leading-none transition-transform group-open:rotate-45">+</span>
+                    <span className="text-brand text-xl leading-none transition-transform group-open:rotate-45">+</span>
                   </summary>
-                  <p className="px-5 pb-5 -mt-1 text-slate-400 leading-relaxed">{item.a}</p>
+                  <p className="px-5 pb-5 -mt-1 text-slate-600 leading-relaxed">{item.a}</p>
                 </details>
               ))}
             </div>
@@ -105,15 +107,15 @@ export default function App() {
         </section>
 
         {/* CTA FINAL */}
-        <section className="border-t border-white/5 bg-surface">
+        <section className="bg-brand">
           <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 text-center">
             <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-3">Pronto para pagar menos de luz?</h2>
-            <p className="text-slate-400 mb-8">O cadastro é gratuito e sem compromisso.</p>
+            <p className="text-white/85 mb-8">O cadastro é gratuito e sem compromisso.</p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <a href="#cadastro" className="inline-flex items-center justify-center bg-emerald-500 hover:bg-emerald-400 text-obsidian font-bold px-7 py-3.5 rounded-xl transition-colors">
-                Fazer meu cadastro
+              <a href="#cadastro" className="inline-flex items-center justify-center bg-white hover:bg-sun-light text-brand-dark font-bold px-7 py-3.5 rounded-xl transition-colors">
+                Simular minha economia
               </a>
-              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center border border-white/15 hover:bg-white/5 text-white font-semibold px-7 py-3.5 rounded-xl transition-colors">
+              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center border border-white/50 hover:bg-white/10 text-white font-semibold px-7 py-3.5 rounded-xl transition-colors">
                 Tirar dúvidas no WhatsApp
               </a>
             </div>
@@ -121,14 +123,14 @@ export default function App() {
         </section>
       </main>
 
-      <footer className="border-t border-white/10 bg-[#04060a]">
+      <footer className="bg-slate-50 border-t border-slate-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 text-sm text-slate-500 space-y-1.5 text-center">
-          <img src="/logo-white.png" alt="Eletrodara Gestão de Energia" width="762" height="164" className="h-10 w-auto mx-auto mb-4" loading="lazy" />
-          <p className="text-slate-300 font-semibold">{SITE_CONFIG.company}</p>
+          <img src="/logo.png" alt="Eletrodara Gestão de Energia" width="762" height="164" className="h-10 w-auto mx-auto mb-4" loading="lazy" />
+          <p className="text-slate-700 font-semibold">{SITE_CONFIG.company}</p>
           <p>CNPJ {SITE_CONFIG.cnpj}</p>
           <p>{SITE_CONFIG.headquarters}</p>
           <p>WhatsApp {SITE_CONFIG.phoneFormatted}</p>
-          <p className="pt-3 text-xs text-slate-600">
+          <p className="pt-3 text-xs text-slate-400">
             Geração Distribuída compartilhada conforme a Lei Federal 14.300/2022 e as resoluções da ANEEL.
           </p>
         </div>
@@ -138,7 +140,7 @@ export default function App() {
         href={whatsappUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="hidden sm:block fixed bottom-5 right-5 z-50 p-4 rounded-full bg-[#25D366] hover:bg-[#20ba59] text-white shadow-xl shadow-black/40 transition-transform hover:scale-105"
+        className="hidden sm:block fixed bottom-5 right-5 z-50 p-4 rounded-full bg-[#25D366] hover:bg-[#20ba59] text-white shadow-xl shadow-black/20 transition-transform hover:scale-105"
         aria-label="Falar no WhatsApp"
       >
         <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
