@@ -41,7 +41,7 @@ export const SITE_CONFIG = {
   faq: [
     {
       q: "Por que vocês pedem meu CPF ou CNPJ?",
-      a: "Porque o desconto é vinculado ao titular da conta de luz. Com o CPF/CNPJ emitimos sua proposta e o termo de adesão, que você assina digitalmente. Seus dados são usados só para isso (LGPD).",
+      a: "Porque o desconto é vinculado ao titular da conta de luz. Com o CPF/CNPJ emitimos sua proposta e o termo de adesão, que chega por WhatsApp e e-mail para você assinar digitalmente. Seus dados são usados só para isso (LGPD).",
     },
     {
       q: "Preciso pagar alguma coisa?",

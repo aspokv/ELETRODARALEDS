@@ -131,7 +131,7 @@ export function LeadForm({ partner, whatsappNumber }) {
     if (form.name.trim().length < 3) return setError('Informe o nome do titular da conta.');
     if (!isDocumentoValido(form.documento)) return setError('Informe um CPF ou CNPJ válido.');
     if (form.phone.replace(/\D/g, '').length < 10) return setError('Informe um WhatsApp válido com DDD.');
-    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(form.email.trim())) return setError('E-mail inválido.');
+    if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(form.email.trim())) return setError('Informe um e-mail válido — o termo de adesão também chega por e-mail.');
     if (!form.city.trim()) return setError('Informe sua cidade.');
 
     const lead = {
@@ -305,7 +305,7 @@ export function LeadForm({ partner, whatsappNumber }) {
         </div>
         <div className="sm:col-span-2">
           <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1.5">
-            E-mail <span className="font-normal text-slate-400">(opcional)</span>
+            E-mail <span className="font-normal text-slate-400">(para receber o termo)</span>
           </label>
           <input id="email" type="email" inputMode="email" autoComplete="email" placeholder="seu@email.com" value={form.email} onChange={update('email')} className={inputClass} />
         </div>

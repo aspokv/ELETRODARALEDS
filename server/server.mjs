@@ -168,7 +168,8 @@ async function handleCreateLead(req, res) {
     return sendJson(res, 400, { ok: false, error: 'Nome e WhatsApp são obrigatórios.' });
   }
   if (!isDocumentoValido(lead.documento)) return sendJson(res, 400, { ok: false, error: 'CPF ou CNPJ inválido.' });
-  if (lead.email && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(lead.email)) return sendJson(res, 400, { ok: false, error: 'E-mail inválido.' });
+  // E-mail obrigatório: o Sistema Eletrodara envia o termo de assinatura por e-mail e WhatsApp.
+  if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(lead.email)) return sendJson(res, 400, { ok: false, error: 'Informe um e-mail válido.' });
 
   let buffer = null;
   let ext = null;
