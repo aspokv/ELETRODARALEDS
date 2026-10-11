@@ -1,5 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { SITE_CONFIG } from '../config/site';
+import { isDocumentoValido, formatDocumento } from '../lib/documento';
+import { useDistribuidoras, ESTADOS } from '../lib/distribuidoras';
 
 const MAX_FILE_MB = 10;
 const VALID_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic'];
@@ -85,7 +87,8 @@ const inputClass =
 export function LeadForm({ partner, whatsappNumber }) {
   const fileInputRef = useRef(null);
   const [billValue, setBillValue] = useState(SITE_CONFIG.defaultBill);
-  const [form, setForm] = useState({ name: '', phone: '', city: '', distributor: 'RGE' });
+  const [form, setForm] = useState({ name: '', documento: '', phone: '', email: '', uf: 'RS', city: '', distribuidoraId: '' });
+  const distribuidoras = useDistribuidoras();
   const [file, setFile] = useState(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [status, setStatus] = useState('idle'); // idle | sending | done
@@ -97,8 +100,11 @@ export function LeadForm({ partner, whatsappNumber }) {
   const annualSavingsMin = monthlySavingsMin * 12;
   const annualSavings = monthlySavings * 12;
 
-  const update = (field) => (e) =>
-    setForm({ ...form, [field]: field === 'phone' ? formatPhone(e.target.value) : e.target.value });
+  const masks = { phone: formatPhone, documento: formatDocumento };
+  const update = (field) => (e) => setForm({ ...form, [field]: masks[field] ? masks[field](e.target.value) : e.target.value });
+
+  // Concessionária escolhida (ou a primeira da lista, que é a RGE).
+  const distribuidora = distribuidoras.find((d) => (d.id || d.nome) === form.distribuidoraId) || distribuidoras[0];
 
   const pickFile = (f) => {
     setError('');
@@ -122,14 +128,19 @@ export function LeadForm({ partner, whatsappNumber }) {
     e.preventDefault();
     setError('');
 
-    if (form.name.trim().length < 3) return setError('Informe seu nome.');
+    if (form.name.trim().length < 3) return setError('Informe o nome do titular da conta.');
+    if (!isDocumentoValido(form.documento)) return setError('Informe um CPF ou CNPJ válido.');
     if (form.phone.replace(/\D/g, '').length < 10) return setError('Informe um WhatsApp válido com DDD.');
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(form.email.trim())) return setError('E-mail inválido.');
     if (!form.city.trim()) return setError('Informe sua cidade.');
 
     const lead = {
       ...form,
       name: form.name.trim(),
+      email: form.email.trim(),
       city: form.city.trim(),
+      distributor: distribuidora?.nome || '',
+      distribuidoraId: distribuidora?.id || '',
       billValue,
       monthlySavingsMin,
       monthlySavings,
@@ -285,18 +296,38 @@ export function LeadForm({ partner, whatsappNumber }) {
           <input id="name" type="text" autoComplete="name" placeholder="Seu nome completo" value={form.name} onChange={update('name')} className={inputClass} />
         </div>
         <div>
+          <label htmlFor="documento" className="block text-sm font-medium text-slate-700 mb-1.5">CPF ou CNPJ do titular</label>
+          <input id="documento" type="text" inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" value={form.documento} onChange={update('documento')} className={inputClass} />
+        </div>
+        <div>
           <label htmlFor="phone" className="block text-sm font-medium text-slate-700 mb-1.5">WhatsApp</label>
           <input id="phone" type="tel" inputMode="numeric" autoComplete="tel-national" placeholder="(54) 99999-9999" value={form.phone} onChange={update('phone')} className={inputClass} />
         </div>
-        <div>
-          <label htmlFor="city" className="block text-sm font-medium text-slate-700 mb-1.5">Cidade</label>
-          <input id="city" type="text" autoComplete="address-level2" placeholder="Ex.: Caxias do Sul" value={form.city} onChange={update('city')} className={inputClass} />
+        <div className="sm:col-span-2">
+          <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1.5">
+            E-mail <span className="font-normal text-slate-400">(opcional)</span>
+          </label>
+          <input id="email" type="email" inputMode="email" autoComplete="email" placeholder="seu@email.com" value={form.email} onChange={update('email')} className={inputClass} />
+        </div>
+        <div className="grid grid-cols-[5.5rem_1fr] gap-3 sm:col-span-2">
+          <div>
+            <label htmlFor="uf" className="block text-sm font-medium text-slate-700 mb-1.5">Estado</label>
+            <select id="uf" value={form.uf} onChange={update('uf')} className={`${inputClass} px-3`}>
+              {ESTADOS.map((uf) => (
+                <option key={uf} value={uf} className="text-black">{uf}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="city" className="block text-sm font-medium text-slate-700 mb-1.5">Cidade</label>
+            <input id="city" type="text" autoComplete="address-level2" placeholder="Ex.: Caxias do Sul" value={form.city} onChange={update('city')} className={inputClass} />
+          </div>
         </div>
         <div className="sm:col-span-2">
-          <label htmlFor="distributor" className="block text-sm font-medium text-slate-700 mb-1.5">Distribuidora de energia</label>
-          <select id="distributor" value={form.distributor} onChange={update('distributor')} className={inputClass}>
-            {SITE_CONFIG.distributors.map((d) => (
-              <option key={d.value} value={d.value} className="text-black">{d.label}</option>
+          <label htmlFor="distributor" className="block text-sm font-medium text-slate-700 mb-1.5">Concessionária de energia</label>
+          <select id="distributor" value={distribuidora ? distribuidora.id || distribuidora.nome : ''} onChange={update('distribuidoraId')} className={inputClass}>
+            {distribuidoras.map((d) => (
+              <option key={d.id || d.nome} value={d.id || d.nome} className="text-black">{d.nome}</option>
             ))}
           </select>
         </div>
@@ -331,8 +362,8 @@ export function LeadForm({ partner, whatsappNumber }) {
       </div>
 
       <p className="text-xs text-slate-500 leading-relaxed">
-        Ao enviar, seus dados e sua conta vão para a equipe da Eletrodara pelo WhatsApp, apenas para analisar seu desconto.
-        Não compartilhamos com terceiros (LGPD).
+        Ao enviar, seus dados e sua conta vão para a Eletrodara, apenas para analisar seu desconto e emitir sua proposta e
+        o termo de adesão para assinatura. Não compartilhamos com terceiros (LGPD).
       </p>
     </form>
   );

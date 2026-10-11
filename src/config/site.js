@@ -16,22 +16,10 @@ export const SITE_CONFIG = {
   maxBill: 10000,
   defaultBill: 600,
 
-  distributors: [
-    { value: "RGE", label: "RGE (RS)" },
-    { value: "CEEE Equatorial", label: "CEEE Equatorial (RS)" },
-    { value: "CPFL", label: "CPFL (SP)" },
-    { value: "CEMIG", label: "CEMIG (MG)" },
-    { value: "ENEL", label: "Enel (SP/RJ/CE)" },
-    { value: "Copel", label: "Copel (PR)" },
-    { value: "Celesc", label: "Celesc (SC)" },
-    { value: "Neoenergia", label: "Neoenergia" },
-    { value: "Outra", label: "Outra distribuidora" },
-  ],
-
   steps: [
     {
       title: "Simule e envie sua conta",
-      text: "Veja quanto vai economizar, anexe a foto ou PDF da sua conta de luz e preencha nome, WhatsApp e cidade.",
+      text: "Veja quanto vai economizar, anexe a foto ou PDF da sua conta de luz e preencha seus dados (nome, CPF/CNPJ, WhatsApp e cidade).",
     },
     {
       title: "Analisamos sua conta",
@@ -51,6 +39,10 @@ export const SITE_CONFIG = {
   ],
 
   faq: [
+    {
+      q: "Por que vocês pedem meu CPF ou CNPJ?",
+      a: "Porque o desconto é vinculado ao titular da conta de luz. Com o CPF/CNPJ emitimos sua proposta e o termo de adesão, que você assina digitalmente. Seus dados são usados só para isso (LGPD).",
+    },
     {
       q: "Preciso pagar alguma coisa?",
       a: "Não. O cadastro, a adesão e a mensalidade são gratuitos. Você só passa a pagar menos na sua conta de luz.",

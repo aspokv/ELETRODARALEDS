@@ -4,6 +4,8 @@ import { STATUSES } from './store.mjs';
 export const escapeHtml = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
+const ELETRODARA_LINK_BASE = 'https://app.eletrodara.com.br/cadastro-completo/';
+
 const brl = (v) => (v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }));
 const num = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 const formatSize = (b) => (b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
@@ -91,6 +93,14 @@ function layout(user, active, title, content) {
 </header>
 <main>${content}</main>`
   );
+}
+
+// Situação do envio ao Sistema Eletrodara (só o admin vê).
+function eletrodaraLine(l) {
+  const e = l.eletrodara;
+  if (!e) return '<div class="muted" style="margin-bottom:8px">Sistema Eletrodara: não enviado</div>';
+  const label = { enviado: '✅ Enviado ao Sistema Eletrodara', ja_existe: '☑️ Já existia no Sistema Eletrodara', erro: '⚠️ Falha ao enviar ao Sistema Eletrodara' }[e.status] || e.status;
+  return `<div class="${e.status === 'erro' ? 'flash err' : 'muted'}" style="margin-bottom:8px;font-size:13px">${label} · ${formatDate(e.at)}${e.detail ? ` — ${escapeHtml(e.detail)}` : ''}</div>`;
 }
 
 const flashBox = (flash) => (flash ? `<div class="flash ${flash.type === 'err' ? 'err' : ''}">${escapeHtml(flash.text)}</div>` : '');
@@ -186,9 +196,11 @@ export function dashboardPage({ user, leads, allPartners, stats, ranking, query,
   <div class="row"><span class="name">${escapeHtml(l.name)}</span><span class="badge ${l.status}">${statusLabel(l.status)}</span></div>
   <div class="muted">${formatDate(l.createdAt)}${isAdmin ? ` · ${escapeHtml(partnerName(l.partnerId))}` : ''}</div>
   <div class="meta">
-    <span>📱 ${escapeHtml(l.phone)}</span><span>📍 ${escapeHtml(l.city || '—')}</span><span>🏢 ${escapeHtml(l.distributor || '—')}</span>
+    <span>📱 ${escapeHtml(l.phone)}</span>${l.documento ? `<span>🪪 ${escapeHtml(l.documento)}</span>` : ''}${l.email ? `<span>✉️ ${escapeHtml(l.email)}</span>` : ''}
+    <span>📍 ${escapeHtml(l.city || '—')}${l.uf ? `/${escapeHtml(l.uf)}` : ''}</span><span>🏢 ${escapeHtml(l.distributor || '—')}</span>
     <span>💰 ${brl(l.billValue)}/mês</span><span>⚡ ${l.kwhReal != null ? `<b>${num(l.kwhReal)} kWh</b> (fatura)` : `~${num(l.kwhEstimated)} kWh (estimado)`}</span>
   </div>
+  ${isAdmin ? eletrodaraLine(l) : ''}
   <form method="post" action="/painel/lead/${l.id}">
     <div class="edit">
       <label>Status<select name="status">${STATUSES.map((s) => `<option value="${s.id}" ${l.status === s.id ? 'selected' : ''}>${s.label}</option>`).join('')}</select></label>
@@ -202,6 +214,11 @@ export function dashboardPage({ user, leads, allPartners, stats, ranking, query,
   </form>
   <div class="actions" style="margin-top:8px">
     ${fileActions}
+    ${
+      isAdmin && l.eletrodara?.status !== 'enviado' && l.eletrodara?.status !== 'ja_existe'
+        ? `<form class="inline" method="post" action="/painel/lead/${l.id}/enviar-eletrodara" onsubmit="return confirm('Enviar o cadastro de ${escapeHtml(l.name)} ao Sistema Eletrodara? Isso cria o lead lá e pode disparar o termo de assinatura.')"><button class="btn small">${l.eletrodara ? 'Reenviar' : 'Enviar'} ao Sistema Eletrodara</button></form>`
+        : ''
+    }
     ${isAdmin ? `<form class="inline" method="post" action="/painel/lead/${l.id}/excluir" onsubmit="return confirm('Excluir o cadastro de ${escapeHtml(l.name)} e a conta? Não dá para desfazer.')"><button class="btn danger small">Excluir cadastro</button></form>` : ''}
   </div>
 </div>`;
@@ -231,13 +248,15 @@ export function partnersPage({ user, partners, statsByPartner, origin, flash }) 
   <div class="meta"><span>📱 ${escapeHtml(formatPhone(p.whatsapp))}</span><span>👤 usuário: <b>${escapeHtml(p.username)}</b></span>
     <span>${num(s.total)} cadastros</span><span>${num(s.active)} ativados</span><span>${num(s.kwh)} kWh/mês</span></div>
   <span class="muted">Link de divulgação:</span><span class="link">${escapeHtml(link)}</span>
-  <div class="actions">
+  <span class="muted">Cadastro completo no Sistema Eletrodara: ${p.eletrodaraSlug ? `<b>${escapeHtml(p.eletrodaraSlug)}</b>` : 'usa o link padrão das Configurações'}</span>
+  <div class="actions" style="margin-top:8px">
     <a class="btn wa small" href="https://wa.me/?text=${encodeURIComponent(`Seu link de cadastros Eletrodara: ${link}\nPainel: ${origin}/painel (usuário: ${p.username})`)}" target="_blank" rel="noopener">Enviar link</a>
     <a class="btn small" href="/painel?parceiro=${p.id}">Ver cadastros</a>
     <details><summary class="btn small">Editar</summary>
       <form method="post" action="/painel/parceiros/${p.id}" class="edit" style="margin-top:8px">
         <label>Nome<input name="name" value="${escapeHtml(p.name)}" required></label>
         <label>WhatsApp (com DDD)<input name="whatsapp" value="${escapeHtml(formatPhone(p.whatsapp))}" inputmode="tel" required></label>
+        <label class="full">Link do cadastro completo no Sistema Eletrodara (opcional)<input name="eletrodaraLink" value="${p.eletrodaraSlug ? `${ELETRODARA_LINK_BASE}${escapeHtml(p.eletrodaraSlug)}` : ''}" placeholder="${ELETRODARA_LINK_BASE}nome-do-parceiro"></label>
         <label class="full">Nova senha (deixe em branco para manter)<input name="password" type="text" autocomplete="new-password"></label>
         <div class="actions full"><button class="btn primary small">Salvar</button></div>
       </form>
@@ -261,6 +280,7 @@ export function partnersPage({ user, partners, statsByPartner, origin, flash }) 
   <label>WhatsApp (com DDD)<input name="whatsapp" required inputmode="tel" placeholder="(54) 99999-9999"></label>
   <label>Usuário de acesso<input name="username" required autocapitalize="none" placeholder="Ex.: joao"></label>
   <label>Senha<input name="password" required type="text" autocomplete="new-password" minlength="6"></label>
+  <label class="full">Link do cadastro completo no Sistema Eletrodara (opcional)<input name="eletrodaraLink" placeholder="${ELETRODARA_LINK_BASE}nome-do-parceiro"></label>
   <div class="actions full"><button class="btn primary">Cadastrar parceiro</button></div>
 </form></div>
 <h2>Parceiros cadastrados (${partners.length})</h2>
@@ -289,10 +309,18 @@ export function settingsPage({ user, settings, flash }) {
     'Configurações',
     `${flashBox(flash)}<h1>Configurações</h1>
 <div class="card"><form method="post" action="/painel/config" class="edit">
+  <h2 class="full" style="margin-top:0">Sistema Eletrodara</h2>
+  <label class="full" style="flex-direction:row;align-items:center;gap:10px;font-size:15px;color:var(--ink)">
+    <input type="checkbox" name="eletrodaraAuto" value="1" ${settings.eletrodaraAuto ? 'checked' : ''} style="width:20px;height:20px">
+    Enviar cada cadastro novo automaticamente ao Sistema Eletrodara</label>
+  <p class="muted full" style="margin:0">Cria o lead lá (origem "Landing") com CPF/CNPJ, contato, cidade, concessionária, valor e fatura — e o sistema deles pode disparar o termo de assinatura. Desligado, você envia cadastro por cadastro pelo botão "Enviar ao Sistema Eletrodara".</p>
+  <label class="full">Link padrão do cadastro completo (clientes sem parceiro, ou parceiro sem link próprio)
+    <input name="eletrodaraLink" value="${ELETRODARA_LINK_BASE}${escapeHtml(settings.eletrodaraSlugPadrao || '')}" required></label>
+  <h2 class="full">Estimativa de kWh</h2>
   <label class="full">Tarifa média (R$ por kWh, com impostos) — usada para estimar o kWh pelo valor da conta
     <input name="tariffPerKwh" type="number" step="0.01" min="0.1" max="5" value="${settings.tariffPerKwh}" required></label>
+  <p class="muted full" style="margin:0">Ao salvar, as estimativas de todos os cadastros sem kWh real são recalculadas.</p>
   <div class="actions full"><button class="btn primary">Salvar</button></div>
-</form>
-<p class="muted">Ao salvar, as estimativas de todos os cadastros sem kWh real são recalculadas.</p></div>`
+</form></div>`
   );
 }

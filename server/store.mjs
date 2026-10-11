@@ -16,7 +16,9 @@ export const STATUSES = [
 ];
 export const STATUS_IDS = STATUSES.map((s) => s.id);
 
-const DEFAULT_SETTINGS = { tariffPerKwh: 0.95 };
+// eletrodaraAuto: envia cada cadastro novo ao Sistema Eletrodara automaticamente.
+// eletrodaraSlugPadrao: link do cadastro completo usado quando o cliente não veio de um parceiro.
+const DEFAULT_SETTINGS = { tariffPerKwh: 0.95, eletrodaraAuto: false, eletrodaraSlugPadrao: "cliqueeconomize" };
 
 export function createStore(dataDir) {
   const dirs = {
@@ -63,6 +65,7 @@ export function createStore(dataDir) {
     lead.history ??= [];
     lead.notes ??= '';
     lead.kwhReal ??= null;
+    lead.eletrodara ??= null;
     if (lead.kwhEstimated == null && lead.billValue) lead.kwhEstimated = Math.round(lead.billValue / settings.tariffPerKwh);
     if (lead.partnerId === undefined) {
       const partner = lead.seller ? findPartnerBySlug(lead.seller) : null;
@@ -97,6 +100,7 @@ export function createStore(dataDir) {
     if ('kwhReal' in changes) lead.kwhReal = changes.kwhReal;
     if ('notes' in changes) lead.notes = changes.notes;
     if ('partnerId' in changes) lead.partnerId = changes.partnerId;
+    if ("eletrodara" in changes) lead.eletrodara = changes.eletrodara;
     lead.updatedAt = new Date().toISOString();
     await saveLead(lead);
     return lead;
@@ -155,7 +159,7 @@ export function createStore(dataDir) {
   const findPartnerBySlug = (slug) => [...partners.values()].find((p) => p.slug === String(slug).toLowerCase()) || null;
   const findPartnerByUsername = (u) => [...partners.values()].find((p) => p.username === String(u).toLowerCase()) || null;
 
-  async function addPartner({ name, whatsapp, username, password, slug }) {
+  async function addPartner({ name, whatsapp, username, password, slug, eletrodaraSlug }) {
     const partner = {
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
@@ -164,6 +168,7 @@ export function createStore(dataDir) {
       slug: uniqueSlug(slug || name),
       username: username.toLowerCase(),
       passwordHash: hashPassword(password),
+      eletrodaraSlug: eletrodaraSlug || "",
       active: true,
     };
     partners.set(partner.id, partner);
@@ -176,6 +181,7 @@ export function createStore(dataDir) {
     if (!partner) return null;
     if (changes.name) partner.name = changes.name;
     if (changes.whatsapp) partner.whatsapp = changes.whatsapp;
+    if ("eletrodaraSlug" in changes) partner.eletrodaraSlug = changes.eletrodaraSlug;
     if (changes.password) partner.passwordHash = hashPassword(changes.password);
     if ('active' in changes) partner.active = changes.active;
     await savePartner(partner);

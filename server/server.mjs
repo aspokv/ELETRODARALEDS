@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { createStore, STATUSES, STATUS_IDS } from './store.mjs';
 import { createAuth } from './auth.mjs';
 import * as views from './views.mjs';
+import * as eletrodara from './eletrodara.mjs';
+import { isDocumentoValido, formatDocumento } from './documento.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(process.env.DIST_DIR || path.join(ROOT, '..', 'dist'));
@@ -103,6 +105,13 @@ const sameOrigin = (req) => {
   }
 };
 
+// Aceita o link completo (https://app.eletrodara.com.br/cadastro-completo/<slug>) ou só o <slug>.
+const parseEletrodaraSlug = (v) => {
+  const s = String(v ?? '').trim();
+  const fromUrl = s.match(/cadastro-completo\/([\w-]+)/)?.[1];
+  return (fromUrl || (/^[\w-]+$/.test(s) ? s : '')).slice(0, 60);
+};
+
 const onlyDigits = (v) => String(v ?? '').replace(/\D/g, '');
 // Aceita "(54) 99999-9999", "54999999999" ou "5554999999999" e guarda com 55 na frente.
 const normalizeWhatsapp = (v) => {
@@ -136,8 +145,12 @@ async function handleCreateLead(req, res) {
     createdAt: new Date().toISOString(),
     name: text(data.name),
     phone: text(data.phone, 20),
+    documento: formatDocumento(data.documento),
+    email: text(data.email, 120).toLowerCase(),
     city: text(data.city),
-    distributor: text(data.distributor, 40),
+    uf: text(data.uf, 2).toUpperCase(),
+    distributor: text(data.distributor, 80),
+    distribuidoraId: text(data.distribuidoraId, 40),
     billValue,
     monthlySavingsMin: num(data.monthlySavingsMin),
     monthlySavings: num(data.monthlySavings),
@@ -154,6 +167,8 @@ async function handleCreateLead(req, res) {
   if (lead.name.length < 3 || onlyDigits(lead.phone).length < 10) {
     return sendJson(res, 400, { ok: false, error: 'Nome e WhatsApp são obrigatórios.' });
   }
+  if (!isDocumentoValido(lead.documento)) return sendJson(res, 400, { ok: false, error: 'CPF ou CNPJ inválido.' });
+  if (lead.email && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(lead.email)) return sendJson(res, 400, { ok: false, error: 'E-mail inválido.' });
 
   let buffer = null;
   let ext = null;
@@ -167,6 +182,57 @@ async function handleCreateLead(req, res) {
   await store.addLead(lead, buffer, ext);
   console.log('Novo cadastro:', lead.id, lead.city, partner ? `parceiro ${partner.slug}` : 'direto', buffer ? `(conta ${Math.round(buffer.length / 1024)} KB)` : '');
   sendJson(res, 201, { ok: true, fileUrl: lead.file ? `${publicOrigin(req)}/conta/${lead.file.token}` : null });
+
+  // Envio ao Sistema Eletrodara em segundo plano: o cliente não espera por ele.
+  if (store.settings.eletrodaraAuto) pushToEletrodara(lead, publicOrigin(req)).catch((err) => console.error('Eletrodara:', err));
+}
+
+// Envia um cadastro ao Sistema Eletrodara e registra o resultado no próprio cadastro.
+async function pushToEletrodara(lead, origin) {
+  const partner = lead.partnerId ? store.partners.get(lead.partnerId) : null;
+  const slug = partner?.eletrodaraSlug || store.settings.eletrodaraSlugPadrao;
+  const record = (status, detail) => store.updateLead(lead.id, { eletrodara: { status, detail, at: new Date().toISOString(), slug } }, 'sistema');
+
+  if (!slug) return record('erro', 'Nenhum link do Sistema Eletrodara configurado.');
+  if (!lead.documento) return record('erro', 'Cadastro sem CPF/CNPJ (feito antes da integração).');
+
+  let file = null;
+  if (lead.file && !lead.file.deletedAt) {
+    const ext = path.extname(lead.file.stored);
+    file = { buffer: await fs.readFile(store.filePath(lead)), name: `fatura-${lead.id.slice(0, 8)}${ext}`, type: MIME[ext] || 'application/octet-stream' };
+  }
+  const observacoes = [
+    'Cadastro recebido pela landing page.',
+    partner ? `Parceiro: ${partner.name}.` : null,
+    lead.monthlySavings ? `Economia simulada: R$ ${Math.round(lead.monthlySavingsMin)} a R$ ${Math.round(lead.monthlySavings)}/mês.` : null,
+    lead.file && !lead.file.deletedAt ? `Fatura: ${origin}/conta/${lead.file.token}` : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  try {
+    const result = await eletrodara.sendLead({ slug, lead, file, observacoes });
+    console.log('Eletrodara:', lead.id, result.status);
+    return record(result.status, result.detail);
+  } catch (err) {
+    console.error('Eletrodara falhou:', lead.id, err.message);
+    return record('erro', err.message.slice(0, 300));
+  }
+}
+
+// Lista de concessionárias do Sistema Eletrodara para o formulário (com fallback local).
+const FALLBACK_DISTRIBUIDORAS = ['RGE', 'CEEE Equatorial', 'Celesc', 'Copel', 'CPFL Paulista', 'CPFL Piratininga', 'Outra'].map((n) => ({ id: '', nome: n, plano: null }));
+async function handleDistribuidoras(res) {
+  try {
+    const list = await eletrodara.getDistribuidoras(store.settings.eletrodaraSlugPadrao);
+    const items = list
+      .map((d) => ({ id: d.id, nome: d.nome.split(/ - | \(/)[0].trim(), alias: d.alias, plano: d.planoNome }))
+      .sort((a, b) => (a.alias === 'RGE' ? -1 : b.alias === 'RGE' ? 1 : a.alias === 'CEQ' ? -1 : b.alias === 'CEQ' ? 1 : a.nome.localeCompare(b.nome)));
+    sendJson(res, 200, { ok: true, items });
+  } catch (err) {
+    console.error('Distribuidoras indisponíveis:', err.message);
+    sendJson(res, 200, { ok: true, items: FALLBACK_DISTRIBUIDORAS, fallback: true });
+  }
 }
 
 function handlePartnerInfo(res, slug) {
@@ -204,6 +270,9 @@ const FLASH = {
   'erro-whats': ['err', 'WhatsApp inválido. Use DDD + número, ex.: (54) 99999-9999.'],
   'erro-usuario': ['err', 'Esse usuário já existe. Escolha outro.'],
   'erro-campos': ['err', 'Preencha todos os campos (senha com pelo menos 6 caracteres).'],
+  'eletrodara-ok': ['ok', 'Cadastro enviado ao Sistema Eletrodara.'],
+  'eletrodara-existe': ['ok', 'Esse CPF/CNPJ já existe no Sistema Eletrodara — nada foi duplicado.'],
+  'eletrodara-erro': ['err', 'Não foi possível enviar ao Sistema Eletrodara. Veja o motivo no cadastro.'],
 };
 const flashFrom = (url) => {
   const f = FLASH[url.searchParams.get('msg')];
@@ -337,13 +406,16 @@ function exportCsv(req, res, url, user) {
   const origin = publicOrigin(req);
   const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const statusLabel = (id) => STATUSES.find((s) => s.id === id)?.label ?? id;
-  const header = ['Data', 'Nome', 'WhatsApp', 'Cidade', 'Distribuidora', 'Conta (R$/mês)', 'kWh estimado', 'kWh real', 'Status', 'Parceiro', 'Anotações', 'Conta de luz'];
+  const header = ['Data', 'Nome', 'WhatsApp', 'CPF/CNPJ', 'E-mail', 'Cidade', 'UF', 'Distribuidora', 'Conta (R$/mês)', 'kWh estimado', 'kWh real', 'Status', 'Parceiro', 'Anotações', 'Conta de luz', 'Sistema Eletrodara'];
   const lines = leads.map((l) =>
     [
       new Date(new Date(l.createdAt).getTime() + TZ_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' '),
       l.name,
       l.phone,
+      l.documento,
+      l.email,
       l.city,
+      l.uf,
       l.distributor,
       l.billValue,
       l.kwhEstimated,
@@ -352,6 +424,7 @@ function exportCsv(req, res, url, user) {
       l.partnerId ? store.partners.get(l.partnerId)?.name ?? '' : 'Eletrodara (direto)',
       l.notes,
       l.file && !l.file.deletedAt ? `${origin}/conta/${l.file.token}` : '',
+      l.eletrodara ? [l.eletrodara.status, l.eletrodara.detail].filter(Boolean).join(': ') : '',
     ]
       .map(cell)
       .join(';')
@@ -406,7 +479,7 @@ async function handlePainel(req, res, url) {
   };
 
   // --- Cadastros
-  const leadMatch = p.match(/^\/painel\/lead\/([\w-]+)(?:\/(apagar-conta|excluir))?$/);
+  const leadMatch = p.match(/^\/painel\/lead\/([\w-]+)(?:\/(apagar-conta|excluir|enviar-eletrodara))?$/);
   if (leadMatch && req.method === 'POST') {
     const [, id, action] = leadMatch;
     const lead = store.leads.get(id);
@@ -415,6 +488,12 @@ async function handlePainel(req, res, url) {
       if (!isAdmin) return send(res, 403, 'Só o administrador pode excluir cadastros.');
       await store.deleteLead(id);
       return back('excluido');
+    }
+    if (action === 'enviar-eletrodara') {
+      if (!isAdmin) return send(res, 403, 'Só o administrador pode enviar ao Sistema Eletrodara.');
+      await pushToEletrodara(lead, publicOrigin(req));
+      const sent = store.leads.get(id)?.eletrodara?.status;
+      return back(sent === 'enviado' ? 'eletrodara-ok' : sent === 'ja_existe' ? 'eletrodara-existe' : 'eletrodara-erro', `#c-${id}`);
     }
     if (action === 'apagar-conta') {
       await store.removeLeadFile(lead);
@@ -454,7 +533,7 @@ async function handlePainel(req, res, url) {
     if (!name || !username || password.length < 6) return redirect(res, '/painel/parceiros?msg=erro-campos');
     if (!whatsapp) return redirect(res, '/painel/parceiros?msg=erro-whats');
     if (username === ADMIN_USER.toLowerCase() || store.findPartnerByUsername(username)) return redirect(res, '/painel/parceiros?msg=erro-usuario');
-    await store.addPartner({ name, whatsapp, username, password });
+    await store.addPartner({ name, whatsapp, username, password, eletrodaraSlug: parseEletrodaraSlug(form.eletrodaraLink) });
     return redirect(res, '/painel/parceiros?msg=parceiro');
   }
   const partnerMatch = p.match(/^\/painel\/parceiros\/([\w-]+)(?:\/(ativar|desativar|excluir))?$/);
@@ -473,7 +552,12 @@ async function handlePainel(req, res, url) {
     const whatsapp = normalizeWhatsapp(form.whatsapp);
     if (!whatsapp) return redirect(res, '/painel/parceiros?msg=erro-whats');
     if (form.password && form.password.length < 6) return redirect(res, '/painel/parceiros?msg=erro-campos');
-    await store.updatePartner(id, { name: String(form.name || '').trim().slice(0, 80), whatsapp, password: form.password || undefined });
+    await store.updatePartner(id, {
+      name: String(form.name || '').trim().slice(0, 80),
+      whatsapp,
+      password: form.password || undefined,
+      eletrodaraSlug: parseEletrodaraSlug(form.eletrodaraLink),
+    });
     return redirect(res, '/painel/parceiros?msg=parceiro-salvo');
   }
 
@@ -483,6 +567,10 @@ async function handlePainel(req, res, url) {
   }
   if (p === '/painel/config' && req.method === 'POST') {
     const form = await readForm(req);
+    await store.updateSettings({
+      eletrodaraAuto: form.eletrodaraAuto === '1',
+      eletrodaraSlugPadrao: parseEletrodaraSlug(form.eletrodaraLink) || store.settings.eletrodaraSlugPadrao,
+    });
     const tariff = Number(String(form.tariffPerKwh).replace(',', '.'));
     if (Number.isFinite(tariff) && tariff >= 0.1 && tariff <= 5) {
       await store.updateSettings({ tariffPerKwh: tariff });
@@ -539,6 +627,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname === '/api/leads' && req.method === 'POST') return await handleCreateLead(req, res);
     if (url.pathname === '/api/health') return sendJson(res, 200, { ok: true });
+    if (url.pathname === '/api/distribuidoras') return await handleDistribuidoras(res);
     const partnerApi = url.pathname.match(/^\/api\/parceiro\/([\w-]+)$/);
     if (partnerApi) return handlePartnerInfo(res, partnerApi[1]);
     const conta = url.pathname.match(/^\/conta\/([\w-]{10,})$/);
