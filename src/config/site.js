@@ -4,6 +4,7 @@ export const SITE_CONFIG = {
   phoneFormatted: "(54) 99714-3102",
   cnpj: "61.326.080/0001-64",
   headquarters: "Parque Tecnológico TecnoUCS — Universidade de Caxias do Sul / RS",
+  minDiscount: 20,
   maxDiscount: 25,
 
   // URL que recebe os cadastros (ex.: Web App do Google Apps Script ligado a uma planilha).

@@ -35,7 +35,7 @@ export default function App() {
               </span>
 
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-ink leading-[1.08] mb-5">
-                Economize até <span className="text-brand">{SITE_CONFIG.maxDiscount}%</span> na sua conta de luz.
+                Economize de <span className="text-brand">{SITE_CONFIG.minDiscount}% a {SITE_CONFIG.maxDiscount}%</span> na sua conta de luz.
               </h1>
 
               <p className="text-lg text-slate-600 leading-relaxed mb-7 max-w-xl">

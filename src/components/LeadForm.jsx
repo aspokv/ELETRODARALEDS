@@ -5,6 +5,8 @@ const MAX_FILE_MB = 10;
 const VALID_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic'];
 
 const formatBRL = (val) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const formatBRLShort = (val) => val.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+const formatRange = (min, max) => `${formatBRLShort(min)} a ${formatBRLShort(max)}`;
 
 const formatPhone = (value) => {
   const d = value.replace(/\D/g, '').slice(0, 11);
@@ -56,7 +58,7 @@ const buildMessage = (lead, fileUrl, hasFile) => {
 📍 *Cidade:* ${lead.city}
 🏢 *Distribuidora:* ${lead.distributor}
 💰 *Conta média:* ${formatBRL(lead.billValue)}
-📉 *Economia estimada:* ${formatBRL(lead.monthlySavings)}/mês (${formatBRL(lead.annualSavings)}/ano)
+📉 *Economia estimada:* ${formatRange(lead.monthlySavingsMin, lead.monthlySavings)}/mês (${formatRange(lead.annualSavingsMin, lead.annualSavings)}/ano)
 ${billLine}
 -----------------------------------------
 Olá! Fiz a simulação no site e quero ativar meu desconto.`;
@@ -75,8 +77,9 @@ export function LeadForm() {
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
 
-  const discount = SITE_CONFIG.maxDiscount / 100;
-  const monthlySavings = billValue * discount;
+  const monthlySavingsMin = (billValue * SITE_CONFIG.minDiscount) / 100;
+  const monthlySavings = (billValue * SITE_CONFIG.maxDiscount) / 100;
+  const annualSavingsMin = monthlySavingsMin * 12;
   const annualSavings = monthlySavings * 12;
 
   const update = (field) => (e) =>
@@ -113,7 +116,9 @@ export function LeadForm() {
       name: form.name.trim(),
       city: form.city.trim(),
       billValue,
+      monthlySavingsMin,
       monthlySavings,
+      annualSavingsMin,
       annualSavings,
       hasFile: Boolean(file),
       createdAt: new Date().toISOString(),
@@ -198,14 +203,14 @@ export function LeadForm() {
         <div className="grid grid-cols-2 gap-3 mt-4">
           <div className="p-3 rounded-xl bg-sun-light border border-sun/50">
             <span className="block text-xs font-medium text-sun-text">Economia por mês</span>
-            <span className="block text-xl font-extrabold text-brand-dark tabular-nums">{formatBRL(monthlySavings)}</span>
+            <span className="block text-lg sm:text-xl font-extrabold text-brand-dark tabular-nums leading-tight">{formatRange(monthlySavingsMin, monthlySavings)}</span>
           </div>
           <div className="p-3 rounded-xl bg-sun-light border border-sun/50">
             <span className="block text-xs font-medium text-sun-text">Economia por ano</span>
-            <span className="block text-xl font-extrabold text-brand-dark tabular-nums">{formatBRL(annualSavings)}</span>
+            <span className="block text-lg sm:text-xl font-extrabold text-brand-dark tabular-nums leading-tight">{formatRange(annualSavingsMin, annualSavings)}</span>
           </div>
         </div>
-        <p className="text-xs text-slate-500 mt-2">Estimativa com desconto de até {SITE_CONFIG.maxDiscount}%.</p>
+        <p className="text-xs text-slate-500 mt-2">Estimativa com desconto de {SITE_CONFIG.minDiscount}% a {SITE_CONFIG.maxDiscount}% na fatura.</p>
       </div>
 
       {/* Conta de luz */}
