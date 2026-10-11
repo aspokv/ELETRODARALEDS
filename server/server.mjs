@@ -155,6 +155,20 @@ function isAdmin(req) {
 const askLogin = (res) =>
   send(res, 401, 'Acesso restrito.', { 'WWW-Authenticate': 'Basic realm="Painel Eletrodara", charset="UTF-8"', 'Content-Type': MIME['.txt'] });
 
+// Bloqueia por 15 min o IP que errar a senha do painel 8 vezes, para dificultar adivinhação.
+const LOGIN_MAX_FAILURES = 8;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const loginFailures = new Map(); // ip -> timestamps de erros
+
+function loginBlocked(ip) {
+  const now = Date.now();
+  const recent = (loginFailures.get(ip) || []).filter((t) => now - t < LOGIN_WINDOW_MS);
+  loginFailures.set(ip, recent);
+  return recent.length >= LOGIN_MAX_FAILURES;
+}
+
+const registerLoginFailure = (ip) => loginFailures.set(ip, [...(loginFailures.get(ip) || []), Date.now()]);
+
 // Bloqueia POSTs do painel vindos de outros sites (CSRF), já que o navegador reenvia a senha sozinho.
 const sameOrigin = (req) => {
   try {
@@ -236,7 +250,13 @@ async function handleBillFile(req, res, token) {
 }
 
 async function handlePainel(req, res, url) {
-  if (!isAdmin(req)) return askLogin(res);
+  const ip = clientIp(req);
+  if (loginBlocked(ip)) return send(res, 429, 'Muitas tentativas de senha. Tente de novo em 15 minutos.', { 'Content-Type': MIME['.txt'] });
+  if (!isAdmin(req)) {
+    // Primeiro acesso (sem senha digitada) não conta como erro.
+    if (req.headers.authorization) registerLoginFailure(ip);
+    return askLogin(res);
+  }
 
   const deleteMatch = url.pathname.match(/^\/painel\/(excluir|apagar-conta)\/([\w-]+)$/);
   if (req.method === 'POST' && deleteMatch) {
