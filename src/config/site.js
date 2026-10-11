@@ -1,6 +1,7 @@
 export const SITE_CONFIG = {
   company: "Eletrodara Gestão de Energia Ltda.",
-  whatsappNumber: "5554997143102",
+  // TESTE: número do Nicolas. Voltar para 5554997143102 (empresa) depois dos testes.
+  whatsappNumber: "555491661953",
   phoneFormatted: "(54) 99714-3102",
   cnpj: "61.326.080/0001-64",
   headquarters: "Parque Tecnológico TecnoUCS — Universidade de Caxias do Sul / RS",
