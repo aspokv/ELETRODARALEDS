@@ -50,3 +50,10 @@ input[type=range]::-moz-range-thumb {
   cursor: pointer;
   border: 2px solid #ffffff;
 }
+
+/* Impede o "aumento automático de fonte" do navegador do celular, que desalinha o layout.
+   O tamanho de fonte escolhido pela pessoa nas configurações continua valendo. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}

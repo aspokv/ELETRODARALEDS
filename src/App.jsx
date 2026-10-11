@@ -27,23 +27,23 @@ export default function App() {
         <section className="relative overflow-hidden bg-gradient-to-b from-brand-light via-white to-white">
           <div className="absolute -top-32 -right-32 w-[480px] h-[480px] bg-sun/20 rounded-full blur-3xl pointer-events-none" />
 
-          <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-10 pb-16 sm:pt-16 sm:pb-24 grid lg:grid-cols-[1.1fr_1fr] gap-10 lg:gap-14 items-center">
+          <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-6 pb-12 sm:pt-16 sm:pb-24 grid lg:grid-cols-[1.1fr_1fr] gap-7 sm:gap-10 lg:gap-14 items-center">
             <div>
               <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-brand/20 text-xs font-medium text-brand-dark mb-5 shadow-sm">
                 <span className="w-1.5 h-1.5 rounded-full bg-brand" />
-                Lei Federal 14.300/2022 · Regulado pela ANEEL
+                Lei 14.300/2022 · Regulado pela ANEEL
               </span>
 
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-ink leading-[1.08] mb-5">
+              <h1 className="text-[2rem] min-[400px]:text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-ink leading-[1.1] mb-4 sm:mb-5">
                 Economize de <span className="text-brand">{SITE_CONFIG.minDiscount}% a {SITE_CONFIG.maxDiscount}%</span> na sua conta de luz.
               </h1>
 
-              <p className="text-lg text-slate-600 leading-relaxed mb-7 max-w-xl">
+              <p className="text-base sm:text-lg text-slate-600 leading-relaxed mb-5 sm:mb-7 max-w-xl">
                 Energia solar por assinatura, sem obras, sem placas e sem investimento. O desconto vem direto na
                 fatura da sua distribuidora.
               </p>
 
-              <ul className="grid sm:grid-cols-2 gap-3 max-w-xl">
+              <ul className="grid sm:grid-cols-2 gap-2.5 sm:gap-3 max-w-xl text-[15px] sm:text-base">
                 {SITE_CONFIG.benefits.map((b) => (
                   <li key={b} className="flex items-start gap-2.5 text-slate-800 font-medium">
                     <Check />
@@ -53,7 +53,7 @@ export default function App() {
               </ul>
             </div>
 
-            <div id="cadastro" className="scroll-mt-24 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xl shadow-brand/10">
+            <div id="cadastro" className="scroll-mt-20 bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 min-[400px]:p-5 sm:p-8 shadow-xl shadow-brand/10">
               <LeadForm />
             </div>
           </div>

@@ -196,11 +196,9 @@ export function LeadForm() {
       </div>
 
       {/* Simulador */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200">
-        <div className="flex justify-between items-baseline gap-3 mb-3">
-          <label htmlFor="bill" className="text-sm font-medium text-slate-700">Sua conta de luz média</label>
-          <span className="text-2xl font-extrabold text-ink tabular-nums">{formatBRL(billValue)}</span>
-        </div>
+      <div className="p-3.5 min-[400px]:p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200">
+        <label htmlFor="bill" className="block text-sm font-medium text-slate-700">Valor médio da sua conta</label>
+        <output htmlFor="bill" className="block text-3xl font-extrabold text-ink tabular-nums mt-0.5 mb-3">{formatBRL(billValue)}</output>
         <input
           id="bill"
           type="range"
@@ -212,20 +210,21 @@ export function LeadForm() {
           className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand"
         />
         <div className="flex justify-between text-xs text-slate-500 mt-1.5">
-          <span>{formatBRL(SITE_CONFIG.minBill)}</span>
-          <span>{formatBRL(SITE_CONFIG.maxBill)}+</span>
+          <span>{formatBRLShort(SITE_CONFIG.minBill)}</span>
+          <span>{formatBRLShort(SITE_CONFIG.maxBill)}+</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 mt-4">
-          <div className="p-3 rounded-xl bg-sun-light border border-sun/50">
-            <span className="block text-xs font-medium text-sun-text">Economia por mês</span>
-            <span className="block text-lg sm:text-xl font-extrabold text-brand-dark tabular-nums leading-tight">{formatRange(monthlySavingsMin, monthlySavings)}</span>
+        <p className="mt-4 mb-1.5 text-sm font-medium text-slate-700">Sua economia estimada</p>
+        <dl className="rounded-xl bg-sun-light border border-sun/50 divide-y divide-sun/30">
+          <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+            <dt className="text-sm font-medium text-sun-text whitespace-nowrap">Por mês</dt>
+            <dd className="text-base min-[360px]:text-lg font-extrabold text-brand-dark tabular-nums whitespace-nowrap">{formatRange(monthlySavingsMin, monthlySavings)}</dd>
           </div>
-          <div className="p-3 rounded-xl bg-sun-light border border-sun/50">
-            <span className="block text-xs font-medium text-sun-text">Economia por ano</span>
-            <span className="block text-lg sm:text-xl font-extrabold text-brand-dark tabular-nums leading-tight">{formatRange(annualSavingsMin, annualSavings)}</span>
+          <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+            <dt className="text-sm font-medium text-sun-text whitespace-nowrap">Por ano</dt>
+            <dd className="text-base min-[360px]:text-lg font-extrabold text-brand-dark tabular-nums whitespace-nowrap">{formatRange(annualSavingsMin, annualSavings)}</dd>
           </div>
-        </div>
+        </dl>
         <p className="text-xs text-slate-500 mt-2">Estimativa com desconto de {SITE_CONFIG.minDiscount}% a {SITE_CONFIG.maxDiscount}% na fatura.</p>
       </div>
 
@@ -267,8 +266,8 @@ export function LeadForm() {
             </div>
           ) : (
             <div>
-              <div className="text-sm font-semibold text-ink">📎 Toque para anexar ou tirar uma foto</div>
-              <div className="text-xs text-slate-500 mt-0.5">PDF ou imagem, até {MAX_FILE_MB} MB · opcional, pode enviar depois no WhatsApp</div>
+              <div className="text-sm font-semibold text-ink">📎 Anexar foto ou PDF</div>
+              <div className="text-xs text-slate-500 mt-0.5">Opcional · pode enviar depois no WhatsApp</div>
             </div>
           )}
         </div>
@@ -307,9 +306,14 @@ export function LeadForm() {
       <button
         type="submit"
         disabled={status === 'sending'}
-        className="w-full inline-flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-60 text-white font-extrabold text-base py-4 px-6 rounded-xl transition-colors shadow-lg shadow-brand/25"
+        className="w-full inline-flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-60 text-white font-extrabold text-base py-4 px-5 rounded-xl transition-colors shadow-lg shadow-brand/25"
       >
-        {status === 'sending' ? 'Enviando…' : 'Ativar meu desconto pelo WhatsApp'}
+        {status === 'sending' ? 'Enviando…' : (
+          <>
+            <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.9 9.9 0 004.74 1.21c5.46 0 9.91-4.45 9.91-9.91S17.5 2 12.04 2zm5.8 14.03c-.25.69-1.44 1.32-2 1.4-.51.08-1.16.11-1.87-.12-.43-.14-.98-.32-1.69-.62-2.98-1.29-4.93-4.29-5.08-4.49-.15-.2-1.21-1.61-1.21-3.07 0-1.46.77-2.18 1.04-2.48.27-.3.6-.37.79-.37h.57c.18.01.43-.07.67.51.25.6.84 2.06.92 2.21.07.15.12.32.02.52-.1.2-.15.32-.3.5-.15.17-.31.39-.45.52-.15.15-.3.31-.13.6.17.3.77 1.27 1.65 2.06 1.14 1.01 2.09 1.33 2.39 1.48.3.15.47.12.64-.07.18-.2.74-.87.94-1.16.2-.3.4-.25.67-.15.27.1 1.74.82 2.03.97.3.15.5.22.57.35.07.12.07.72-.18 1.41z"/></svg>
+            Ativar meu desconto
+          </>
+        )}
       </button>
 
       <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
@@ -317,7 +321,7 @@ export function LeadForm() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
         </svg>
         <span>
-          <strong className="text-slate-800">Empresa registrada</strong> · CNPJ {SITE_CONFIG.cnpj} · Sede no Parque Tecnológico TecnoUCS, Caxias do Sul/RS
+          <strong className="text-slate-800">Empresa registrada</strong> · <span className="whitespace-nowrap">CNPJ {SITE_CONFIG.cnpj}</span> · Sede no Parque Tecnológico TecnoUCS, Caxias do Sul/RS
         </span>
       </div>
 
