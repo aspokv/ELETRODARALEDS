@@ -6,7 +6,7 @@ Landing page de cadastros da Eletrodara + painel (`/painel`). Detalhes de estrut
 
 - Painel do Coolify: https://panel.aiexec.com.br
 - App: `eletrodara-landing` — uuid `efukjhwk7cltugg7laoyim5d`
-- Site no ar: https://eletrodara.aiexec.com.br — painel em https://eletrodara.aiexec.com.br/painel (usuário `eletrodara`)
+- Site no ar: https://eletrodara.aiexec.com.br — painel em https://eletrodara.aiexec.com.br/painel (usuário = variável `ADMIN_USER` no Coolify)
 - **Push na `main` não publica sozinho.** Depois do push, dispare o deploy:
   ```bash
   curl -X POST -H "Authorization: Bearer $COOLIFY_TOKEN" -H "Content-Type: application/json" \
@@ -14,7 +14,7 @@ Landing page de cadastros da Eletrodara + painel (`/painel`). Detalhes de estrut
   ```
   e acompanhe em `GET /api/v1/deployments/<deployment_uuid>` (campo `status`).
 - Token da API: Coolify → Keys & Tokens → API Tokens (permissão root). Não fica no repositório.
-- Variáveis no Coolify: `ADMIN_PASSWORD` (senha do painel; trocar = mudar a variável + redeploy). A API não devolve o valor das variáveis.
+- Variáveis no Coolify: `ADMIN_USER` / `ADMIN_PASSWORD` (login do painel; trocar = mudar a variável + redeploy). A API não devolve o valor das variáveis.
 - Dados (cadastros e contas) ficam no volume `/data` do container.
 
 ## Pontos de configuração
