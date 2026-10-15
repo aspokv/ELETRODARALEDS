@@ -1,7 +1,7 @@
 export const SITE_CONFIG = {
   company: "Eletrodara Gestão de Energia Ltda.",
-  whatsappNumber: "5554984123939",
-  phoneFormatted: "(54) 98412-3939",
+  whatsappNumber: "5519995949292",
+  phoneFormatted: "(19) 99594-9292",
   cnpj: "61.326.080/0001-64",
   headquarters: "Parque Tecnológico TecnoUCS — Universidade de Caxias do Sul / RS",
   minDiscount: 20,

@@ -52,4 +52,4 @@ O Dockerfile gera o site e roda `node server/server.mjs` na porta 80. Variáveis
 - **Empresa**: Eletrodara Gestão de Energia Ltda.
 - **CNPJ**: 61.326.080/0001-64
 - **Sede**: Parque Tecnológico TecnoUCS — Universidade de Caxias do Sul / RS
-- **WhatsApp Oficial**: (54) 98412-3939
+- **WhatsApp Oficial**: (19) 99594-9292
