@@ -1,6 +1,7 @@
 // Armazenamento em arquivos JSON dentro de DATA_DIR (volume persistente no Coolify).
 //   leads/<id>.json      cadastros
-//   files/<id>.<ext>     contas de luz
+//   files/<id>.<ext>            contas de luz
+//   files/<id>-documento.<ext>  documento com foto do titular (CNH, RG...)
 //   partners/<id>.json   parceiros
 //   settings.json        configurações (tarifa média etc.)
 import fs from 'node:fs/promises';
@@ -15,6 +16,13 @@ export const STATUSES = [
   { id: 'perdido', label: 'Perdido' },
 ];
 export const STATUS_IDS = STATUSES.map((s) => s.id);
+
+// Arquivos de cada cadastro: a conta de luz fica em lead.file e o documento com foto do titular
+// em lead.docFile. Os dois têm o mesmo formato: { token, originalName, stored, size, deletedAt? }.
+export const FILE_KINDS = ['file', 'docFile'];
+const STORED_SUFFIX = { file: '', docFile: '-documento' };
+// Caminho do link público de cada tipo: /conta/<token> e /documento/<token>.
+export const FILE_ROUTE = { file: 'conta', docFile: 'documento' };
 
 // eletrodaraAuto: envia cada cadastro novo ao Sistema Eletrodara automaticamente.
 // eletrodaraSlugPadrao: link do cadastro completo usado quando o cliente não veio de um parceiro.
@@ -66,6 +74,7 @@ export function createStore(dataDir) {
     lead.notes ??= '';
     lead.kwhReal ??= null;
     lead.eletrodara ??= null;
+    lead.docFile ??= null;
     if (lead.kwhEstimated == null && lead.billValue) lead.kwhEstimated = Math.round(lead.billValue / settings.tariffPerKwh);
     if (lead.partnerId === undefined) {
       const partner = lead.seller ? findPartnerBySlug(lead.seller) : null;
@@ -79,11 +88,14 @@ export function createStore(dataDir) {
 
   const saveLead = (lead) => writeJson(path.join(dirs.leads, `${lead.id}.json`), lead);
 
-  async function addLead(lead, fileBuffer, fileExt) {
-    if (fileBuffer) {
-      const stored = `${lead.id}${fileExt}`;
-      await fs.writeFile(path.join(dirs.files, stored), fileBuffer);
-      lead.file = { ...lead.file, stored, size: fileBuffer.length };
+  // uploads: { file?: { buffer, ext }, docFile?: { buffer, ext } }
+  async function addLead(lead, uploads = {}) {
+    for (const kind of FILE_KINDS) {
+      const upload = uploads[kind];
+      if (!upload?.buffer) continue;
+      const stored = `${lead.id}${STORED_SUFFIX[kind]}${upload.ext}`;
+      await fs.writeFile(path.join(dirs.files, stored), upload.buffer);
+      lead[kind] = { ...lead[kind], stored, size: upload.buffer.length };
     }
     leads.set(lead.id, lead);
     await saveLead(lead);
@@ -106,32 +118,41 @@ export function createStore(dataDir) {
     return lead;
   }
 
-  const filePath = (lead) => path.join(dirs.files, lead.file.stored);
+  const hasFile = (lead, kind = 'file') => Boolean(lead[kind] && !lead[kind].deletedAt);
+  const filePath = (lead, kind = 'file') => path.join(dirs.files, lead[kind].stored);
 
-  async function removeLeadFile(lead) {
-    if (!lead.file || lead.file.deletedAt) return;
-    await fs.rm(filePath(lead), { force: true });
-    lead.file = { ...lead.file, deletedAt: new Date().toISOString() };
+  async function removeLeadFile(lead, kind = 'file') {
+    if (!hasFile(lead, kind)) return;
+    await fs.rm(filePath(lead, kind), { force: true });
+    lead[kind] = { ...lead[kind], deletedAt: new Date().toISOString() };
     await saveLead(lead);
   }
 
   async function deleteLead(id) {
     const lead = leads.get(id);
     if (!lead) return false;
-    if (lead.file && !lead.file.deletedAt) await fs.rm(filePath(lead), { force: true });
+    for (const kind of FILE_KINDS) if (hasFile(lead, kind)) await fs.rm(filePath(lead, kind), { force: true });
     await fs.rm(path.join(dirs.leads, `${id}.json`), { force: true });
     leads.delete(id);
     return true;
   }
 
-  const findLeadByFileToken = (token) => [...leads.values()].find((l) => l.file?.token === token) || null;
+  // Retorna { lead, kind } do arquivo com esse token, ou null.
+  function findFileByToken(token) {
+    for (const lead of leads.values()) {
+      for (const kind of FILE_KINDS) if (lead[kind]?.token === token) return { lead, kind };
+    }
+    return null;
+  }
 
   async function cleanupOldFiles(retentionDays) {
     const limit = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
     for (const lead of leads.values()) {
-      if (lead.file && !lead.file.deletedAt && new Date(lead.createdAt).getTime() < limit) {
-        await removeLeadFile(lead);
-        console.log('Conta expirada removida:', lead.id);
+      if (new Date(lead.createdAt).getTime() >= limit) continue;
+      for (const kind of FILE_KINDS) {
+        if (!hasFile(lead, kind)) continue;
+        await removeLeadFile(lead, kind);
+        console.log(kind === 'file' ? 'Conta expirada removida:' : 'Documento expirado removido:', lead.id);
       }
     }
   }
@@ -215,8 +236,9 @@ export function createStore(dataDir) {
     updateLead,
     deleteLead,
     removeLeadFile,
+    hasFile,
     filePath,
-    findLeadByFileToken,
+    findFileByToken,
     cleanupOldFiles,
     addPartner,
     updatePartner,

@@ -45,12 +45,31 @@ async function compressImage(file) {
   }
 }
 
-// Salva o cadastro (e a conta, se houver) no servidor. Retorna o link da conta salva.
-async function saveLead(lead, file) {
+// Arquivos do cadastro: a conta de luz (file) e o documento com foto do titular (docFile).
+const UPLOADS = [
+  {
+    kind: 'file',
+    label: 'Conta de luz',
+    title: 'Anexar conta de luz',
+    hint: 'Fatura completa em PDF ou foto legível',
+    attached: 'Conta anexada',
+  },
+  {
+    kind: 'docFile',
+    label: 'Documento com foto do titular',
+    title: 'Anexar documento',
+    hint: 'CNH, RG ou outro documento com foto',
+    attached: 'Documento anexado',
+  },
+];
+
+// Salva o cadastro (e os arquivos anexados) no servidor. Retorna os links dos arquivos salvos.
+async function saveLead(lead, files) {
   const payload = { ...lead };
-  if (file) {
-    const upload = await compressImage(file);
-    payload.file = { name: upload.name, type: upload.type, data: await readAsBase64(upload) };
+  for (const { kind } of UPLOADS) {
+    if (!files[kind]) continue;
+    const upload = await compressImage(files[kind]);
+    payload[kind] = { name: upload.name, type: upload.type, data: await readAsBase64(upload) };
   }
   const res = await fetch(SITE_CONFIG.leadEndpoint, {
     method: 'POST',
@@ -59,14 +78,19 @@ async function saveLead(lead, file) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-  return data.fileUrl || null;
+  return { file: data.fileUrl || null, docFile: data.docUrl || null };
 }
 
-const buildMessage = (lead, fileUrl, hasFile) => {
-  let billLine;
-  if (fileUrl) billLine = `📄 *Conta de luz:* ${fileUrl}`;
-  else if (hasFile) billLine = '📄 *Conta de luz:* vou anexar aqui no chat';
-  else billLine = '📸 *Conta de luz:* vou enviar a foto aqui no chat';
+// Linha de um arquivo na mensagem: o link salvo, ou o aviso de que vai pelo chat.
+const fileLine = (icon, label, url, attached) => {
+  if (url) return `${icon} *${label}:* ${url}`;
+  if (attached) return `${icon} *${label}:* vou anexar aqui no chat`;
+  return `${icon} *${label}:* vou enviar a foto aqui no chat`;
+};
+
+const buildMessage = (lead, urls, files) => {
+  const billLine = fileLine('📄', 'Conta de luz', urls.file, Boolean(files.file));
+  const docLine = fileLine('🪪', 'Documento do titular (CNH ou RG)', urls.docFile, Boolean(files.docFile));
 
   return `⚡ *CADASTRO - DESCONTO NA CONTA DE LUZ* ⚡
 -----------------------------------------
@@ -77,6 +101,7 @@ const buildMessage = (lead, fileUrl, hasFile) => {
 💰 *Conta média:* ${formatBRL(lead.billValue)}
 📉 *Economia estimada:* ${formatRange(lead.monthlySavingsMin, lead.monthlySavings)}/mês (${formatRange(lead.annualSavingsMin, lead.annualSavings)}/ano)
 ${billLine}
+${docLine}
 -----------------------------------------
 Olá! Fiz a simulação no site e quero ativar meu desconto.`;
 };
@@ -84,13 +109,72 @@ Olá! Fiz a simulação no site e quero ativar meu desconto.`;
 const inputClass =
   'w-full bg-white border border-slate-300 rounded-xl px-4 py-3.5 text-ink text-base placeholder:text-slate-400 focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none transition';
 
+// Área de anexo (toque ou arraste) de um arquivo.
+function UploadField({ upload, file, onPick, onRemove }) {
+  const inputRef = useRef(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const labelId = `upload-${upload.kind}`;
+
+  const remove = (e) => {
+    e.stopPropagation();
+    onRemove();
+    if (inputRef.current) inputRef.current.value = '';
+  };
+
+  return (
+    <div>
+      <span id={labelId} className="block text-sm font-medium text-slate-700 mb-1.5">{upload.label}</span>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-labelledby={labelId}
+        data-testid={`anexo-${upload.kind}`}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+        onDragLeave={() => setIsDragOver(false)}
+        onDrop={(e) => { e.preventDefault(); setIsDragOver(false); onPick(e.dataTransfer.files?.[0]); }}
+        className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors ${
+          isDragOver
+            ? 'border-brand bg-brand-light'
+            : file
+            ? 'border-brand/60 bg-brand-light/60'
+            : 'border-slate-300 hover:border-brand hover:bg-brand-light/40'
+        }`}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf,image/*"
+          onChange={(e) => onPick(e.target.files?.[0])}
+          className="hidden"
+        />
+        {file ? (
+          <div className="flex items-center justify-between gap-3 text-left">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-ink truncate">📄 {file.name}</div>
+              <div className="text-xs font-medium text-brand">{upload.attached}</div>
+            </div>
+            <button type="button" onClick={remove} className="shrink-0 text-xs text-slate-600 px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100">
+              Trocar
+            </button>
+          </div>
+        ) : (
+          <div>
+            <div className="text-sm font-semibold text-ink">📎 {upload.title}</div>
+            <div className="text-xs text-slate-500 mt-0.5">{upload.hint}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function LeadForm({ partner, whatsappNumber }) {
-  const fileInputRef = useRef(null);
   const [billValue, setBillValue] = useState(SITE_CONFIG.defaultBill);
   const [form, setForm] = useState({ name: '', documento: '', phone: '', email: '', uf: 'RS', city: '', distribuidoraId: '' });
   const distribuidoras = useDistribuidoras();
-  const [file, setFile] = useState(null);
-  const [isDragOver, setIsDragOver] = useState(false);
+  const [files, setFiles] = useState({ file: null, docFile: null });
   const [status, setStatus] = useState('idle'); // idle | sending | done
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -106,23 +190,19 @@ export function LeadForm({ partner, whatsappNumber }) {
   // Concessionária escolhida (ou a primeira da lista, que é a RGE).
   const distribuidora = distribuidoras.find((d) => (d.id || d.nome) === form.distribuidoraId) || distribuidoras[0];
 
-  const pickFile = (f) => {
+  const pickFile = (kind) => (f) => {
     setError('');
     if (!f) return;
     if (f.size > MAX_FILE_MB * 1024 * 1024) {
-      return setError(`O arquivo passa de ${MAX_FILE_MB} MB. Tire uma foto da conta ou envie pelo WhatsApp.`);
+      return setError(`O arquivo passa de ${MAX_FILE_MB} MB. Tire uma foto ou envie pelo WhatsApp.`);
     }
     if (!VALID_TYPES.includes(f.type) && !/\.(pdf|jpe?g|png|webp|heic)$/i.test(f.name)) {
-      return setError('Envie a conta em PDF ou foto (JPG, PNG).');
+      return setError('Envie o arquivo em PDF ou foto (JPG, PNG).');
     }
-    setFile(f);
+    setFiles((prev) => ({ ...prev, [kind]: f }));
   };
 
-  const removeFile = (e) => {
-    e.stopPropagation();
-    setFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+  const removeFile = (kind) => () => setFiles((prev) => ({ ...prev, [kind]: null }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -146,7 +226,8 @@ export function LeadForm({ partner, whatsappNumber }) {
       monthlySavings,
       annualSavingsMin,
       annualSavings,
-      hasFile: Boolean(file),
+      hasFile: Boolean(files.file),
+      hasDocFile: Boolean(files.docFile),
       partner: partner?.slug || "",
       createdAt: new Date().toISOString(),
       source: window.location.href,
@@ -156,19 +237,21 @@ export function LeadForm({ partner, whatsappNumber }) {
     const waWindow = window.open('', '_blank');
 
     setStatus('sending');
-    let fileUrl = null;
+    let urls = { file: null, docFile: null };
     try {
-      fileUrl = await saveLead(lead, file);
+      urls = await saveLead(lead, files);
     } catch (err) {
       // Mesmo se falhar o envio, a pessoa ainda segue pelo WhatsApp.
       console.error('Falha ao salvar cadastro', err);
     }
 
-    const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(buildMessage(lead, fileUrl, Boolean(file)))}`;
+    const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(buildMessage(lead, urls, files))}`;
     if (waWindow) waWindow.location.href = waUrl;
     else window.location.href = waUrl;
 
-    setResult({ lead, waUrl, needsAttachment: Boolean(file) && !fileUrl, fileName: file?.name });
+    // Arquivos que não chegaram ao servidor: a pessoa precisa anexar na conversa.
+    const pendingFiles = UPLOADS.filter(({ kind }) => files[kind] && !urls[kind]).map(({ kind }) => files[kind].name);
+    setResult({ lead, waUrl, pendingFiles });
     setStatus('done');
   };
 
@@ -182,9 +265,9 @@ export function LeadForm({ partner, whatsappNumber }) {
         <p className="text-slate-600 mb-4">
           Abrimos o WhatsApp {partner ? `de ${partner.name}` : "da nossa equipe"} com seus dados. <strong className="text-ink">Só falta tocar em enviar</strong> na conversa.
         </p>
-        {result.needsAttachment && (
+        {result.pendingFiles.length > 0 && (
           <p className="text-sm text-sun-text bg-sun-light border border-sun/50 rounded-xl p-3 mb-4">
-            Por segurança, o navegador não anexa arquivos sozinho: na conversa, toque no clipe 📎 e envie <strong>{result.fileName}</strong>.
+            Por segurança, o navegador não anexa arquivos sozinho: na conversa, toque no clipe 📎 e envie <strong>{result.pendingFiles.join(' e ')}</strong>.
           </p>
         )}
         <a
@@ -244,50 +327,14 @@ export function LeadForm({ partner, whatsappNumber }) {
         <p className="text-xs text-slate-500 mt-2">Estimativa com desconto de {SITE_CONFIG.minDiscount}% a {SITE_CONFIG.maxDiscount}% na fatura.</p>
       </div>
 
-      {/* Conta de luz */}
-      <div>
-        <span className="block text-sm font-medium text-slate-700 mb-1.5">Foto ou PDF da sua conta de luz</span>
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => fileInputRef.current?.click()}
-          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && fileInputRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-          onDragLeave={() => setIsDragOver(false)}
-          onDrop={(e) => { e.preventDefault(); setIsDragOver(false); pickFile(e.dataTransfer.files?.[0]); }}
-          className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors ${
-            isDragOver
-              ? 'border-brand bg-brand-light'
-              : file
-              ? 'border-brand/60 bg-brand-light/60'
-              : 'border-slate-300 hover:border-brand hover:bg-brand-light/40'
-          }`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,image/*"
-            onChange={(e) => pickFile(e.target.files?.[0])}
-            className="hidden"
-          />
-          {file ? (
-            <div className="flex items-center justify-between gap-3 text-left">
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-ink truncate">📄 {file.name}</div>
-                <div className="text-xs font-medium text-brand">Conta anexada</div>
-              </div>
-              <button type="button" onClick={removeFile} className="shrink-0 text-xs text-slate-600 px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100">
-                Trocar
-              </button>
-            </div>
-          ) : (
-            <div>
-              <div className="text-sm font-semibold text-ink">📎 Anexar foto ou PDF</div>
-              <div className="text-xs text-slate-500 mt-0.5">Opcional · pode enviar depois no WhatsApp</div>
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Documentos: conta de luz + documento com foto do titular */}
+      <fieldset className="space-y-3" data-testid="documentos">
+        <legend className="text-sm font-semibold text-ink">Documentos para ativar o desconto</legend>
+        <p className="text-xs text-slate-500 -mt-1.5">Anexe aqui ou envie depois pelo WhatsApp.</p>
+        {UPLOADS.map((upload) => (
+          <UploadField key={upload.kind} upload={upload} file={files[upload.kind]} onPick={pickFile(upload.kind)} onRemove={removeFile(upload.kind)} />
+        ))}
+      </fieldset>
 
       {/* Dados */}
       <div className="grid sm:grid-cols-2 gap-4">
@@ -362,7 +409,7 @@ export function LeadForm({ partner, whatsappNumber }) {
       </div>
 
       <p className="text-xs text-slate-500 leading-relaxed">
-        Ao enviar, seus dados e sua conta vão para a Eletrodara, apenas para analisar seu desconto e emitir sua proposta e
+        Ao enviar, seus dados, sua conta e seu documento vão para a Eletrodara, apenas para analisar seu desconto e emitir sua proposta e
         o termo de adesão para assinatura. Não compartilhamos com terceiros (LGPD).
       </p>
     </form>

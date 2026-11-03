@@ -7,7 +7,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
-import { createStore, STATUSES, STATUS_IDS } from './store.mjs';
+import { createStore, STATUSES, STATUS_IDS, FILE_KINDS, FILE_ROUTE } from './store.mjs';
 import { createAuth } from './auth.mjs';
 import * as views from './views.mjs';
 import * as eletrodara from './eletrodara.mjs';
@@ -20,7 +20,7 @@ const PORT = Number(process.env.PORT || 3001);
 const ADMIN_USER = process.env.ADMIN_USER || 'eletrodara';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const FILE_RETENTION_DAYS = Number(process.env.FILE_RETENTION_DAYS || 30);
-const MAX_BODY_BYTES = 15 * 1024 * 1024; // conta de até ~10 MB em base64
+const MAX_BODY_BYTES = 30 * 1024 * 1024; // conta + documento, até ~10 MB cada, em base64
 const RATE_LIMIT_PER_HOUR = 20;
 const TZ_OFFSET_MS = -3 * 60 * 60 * 1000; // America/Sao_Paulo (sem horário de verão)
 
@@ -41,6 +41,9 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 };
 const UPLOAD_EXT = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/heic': '.heic' };
+
+// Link público (com token) de um arquivo do cadastro: /conta/<token> ou /documento/<token>.
+const fileUrl = (origin, lead, kind) => `${origin}/${FILE_ROUTE[kind]}/${lead[kind].token}`;
 
 const store = createStore(DATA_DIR);
 await store.load();
@@ -161,7 +164,8 @@ async function handleCreateLead(req, res) {
     history: [],
     notes: '',
     source: text(data.source, 300),
-    file: null,
+    file: null, // conta de luz
+    docFile: null, // documento com foto do titular
   };
 
   if (lead.name.length < 3 || onlyDigits(lead.phone).length < 10) {
@@ -171,21 +175,29 @@ async function handleCreateLead(req, res) {
   // E-mail obrigatório: o Sistema Eletrodara envia o termo de assinatura por e-mail e WhatsApp.
   if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(lead.email)) return sendJson(res, 400, { ok: false, error: 'Informe um e-mail válido.' });
 
-  let buffer = null;
-  let ext = null;
-  if (data.file?.data) {
-    ext = UPLOAD_EXT[data.file.type] || /\.(pdf|jpe?g|png|webp|heic)$/i.exec(data.file.name || '')?.[0].toLowerCase().replace('.jpeg', '.jpg');
+  // data.file = conta de luz, data.docFile = documento com foto; cada um { name, type, data (base64) }.
+  const uploads = {};
+  for (const kind of FILE_KINDS) {
+    const f = data[kind];
+    if (!f?.data) continue;
+    const ext = UPLOAD_EXT[f.type] || /\.(pdf|jpe?g|png|webp|heic)$/i.exec(f.name || '')?.[0].toLowerCase().replace('.jpeg', '.jpg');
     if (!ext) return sendJson(res, 400, { ok: false, error: 'Formato de arquivo não aceito.' });
-    buffer = Buffer.from(data.file.data, 'base64');
-    lead.file = { token: crypto.randomBytes(18).toString('base64url'), originalName: text(data.file.name, 120) };
+    uploads[kind] = { buffer: Buffer.from(f.data, 'base64'), ext };
+    lead[kind] = { token: crypto.randomBytes(18).toString('base64url'), originalName: text(f.name, 120) };
   }
 
-  await store.addLead(lead, buffer, ext);
-  console.log('Novo cadastro:', lead.id, lead.city, partner ? `parceiro ${partner.slug}` : 'direto', buffer ? `(conta ${Math.round(buffer.length / 1024)} KB)` : '');
-  sendJson(res, 201, { ok: true, fileUrl: lead.file ? `${publicOrigin(req)}/conta/${lead.file.token}` : null });
+  await store.addLead(lead, uploads);
+  const sizes = FILE_KINDS.filter((k) => uploads[k]).map((k) => `${k === 'file' ? 'conta' : 'documento'} ${Math.round(uploads[k].buffer.length / 1024)} KB`);
+  console.log('Novo cadastro:', lead.id, lead.city, partner ? `parceiro ${partner.slug}` : 'direto', sizes.length ? `(${sizes.join(', ')})` : '');
+  const origin = publicOrigin(req);
+  sendJson(res, 201, {
+    ok: true,
+    fileUrl: lead.file ? fileUrl(origin, lead, 'file') : null,
+    docUrl: lead.docFile ? fileUrl(origin, lead, 'docFile') : null,
+  });
 
   // Envio ao Sistema Eletrodara em segundo plano: o cliente não espera por ele.
-  if (store.settings.eletrodaraAuto) pushToEletrodara(lead, publicOrigin(req)).catch((err) => console.error('Eletrodara:', err));
+  if (store.settings.eletrodaraAuto) pushToEletrodara(lead, origin).catch((err) => console.error('Eletrodara:', err));
 }
 
 // Envia um cadastro ao Sistema Eletrodara e registra o resultado no próprio cadastro.
@@ -197,22 +209,25 @@ async function pushToEletrodara(lead, origin) {
   if (!slug) return record('erro', 'Nenhum link do Sistema Eletrodara configurado.');
   if (!lead.documento) return record('erro', 'Cadastro sem CPF/CNPJ (feito antes da integração).');
 
-  let file = null;
-  if (lead.file && !lead.file.deletedAt) {
-    const ext = path.extname(lead.file.stored);
-    file = { buffer: await fs.readFile(store.filePath(lead)), name: `fatura-${lead.id.slice(0, 8)}${ext}`, type: MIME[ext] || 'application/octet-stream' };
-  }
+  const readFile = async (kind, prefix) => {
+    if (!store.hasFile(lead, kind)) return null;
+    const ext = path.extname(lead[kind].stored);
+    return { buffer: await fs.readFile(store.filePath(lead, kind)), name: `${prefix}-${lead.id.slice(0, 8)}${ext}`, type: MIME[ext] || 'application/octet-stream' };
+  };
+  const file = await readFile('file', 'fatura');
+  const docFile = await readFile('docFile', 'documento');
   const observacoes = [
     'Cadastro recebido pela landing page.',
     partner ? `Parceiro: ${partner.name}.` : null,
     lead.monthlySavings ? `Economia simulada: R$ ${Math.round(lead.monthlySavingsMin)} a R$ ${Math.round(lead.monthlySavings)}/mês.` : null,
-    lead.file && !lead.file.deletedAt ? `Fatura: ${origin}/conta/${lead.file.token}` : null,
+    file ? `Fatura: ${fileUrl(origin, lead, 'file')}` : null,
+    docFile ? `Documento do titular: ${fileUrl(origin, lead, 'docFile')}` : null,
   ]
     .filter(Boolean)
     .join(' ');
 
   try {
-    const result = await eletrodara.sendLead({ slug, lead, file, observacoes });
+    const result = await eletrodara.sendLead({ slug, lead, file, docFile, observacoes });
     console.log('Eletrodara:', lead.id, result.status);
     return record(result.status, result.detail);
   } catch (err) {
@@ -242,19 +257,21 @@ function handlePartnerInfo(res, slug) {
   sendJson(res, 200, { ok: true, slug: partner.slug, name: partner.name, whatsapp: partner.whatsapp });
 }
 
-function handleBillFile(req, res, token) {
-  const lead = store.findLeadByFileToken(token);
-  if (!lead || lead.file.deletedAt) {
-    return sendHtml(res, 404, views.messagePage('Esta conta não está mais disponível. Ela pode ter sido removida ou expirado.'));
+// /conta/<token> (conta de luz) e /documento/<token> (documento com foto do titular).
+function handleLeadFile(req, res, route, token) {
+  const found = store.findFileByToken(token);
+  if (!found || FILE_ROUTE[found.kind] !== route || !store.hasFile(found.lead, found.kind)) {
+    return sendHtml(res, 404, views.messagePage('Este arquivo não está mais disponível. Ele pode ter sido removido ou expirado.'));
   }
-  const ext = path.extname(lead.file.stored);
+  const { lead, kind } = found;
+  const ext = path.extname(lead[kind].stored);
   res.writeHead(200, {
     'Content-Type': MIME[ext] || 'application/octet-stream',
-    'Content-Disposition': `inline; filename="conta-${encodeURIComponent(lead.name.split(' ')[0] || 'cliente')}${ext}"`,
+    'Content-Disposition': `inline; filename="${route}-${encodeURIComponent(lead.name.split(' ')[0] || 'cliente')}${ext}"`,
     'Cache-Control': 'private, no-store',
     'X-Robots-Tag': 'noindex',
   });
-  createReadStream(store.filePath(lead)).on('error', () => res.end()).pipe(res);
+  createReadStream(store.filePath(lead, kind)).on('error', () => res.end()).pipe(res);
 }
 
 // ---------------------------------------------------------------------------
@@ -265,6 +282,7 @@ const FLASH = {
   salvo: ['ok', 'Alterações salvas.'],
   excluido: ['ok', 'Cadastro excluído.'],
   conta: ['ok', 'Arquivo da conta apagado.'],
+  documento: ['ok', 'Arquivo do documento apagado.'],
   parceiro: ['ok', 'Parceiro cadastrado. Copie o link e envie para ele.'],
   'parceiro-salvo': ['ok', 'Parceiro atualizado.'],
   'parceiro-excluido': ['ok', 'Parceiro excluído.'],
@@ -360,8 +378,9 @@ function storageInfo() {
   let bytes = 0;
   let files = 0;
   for (const l of store.leads.values()) {
-    if (l.file && !l.file.deletedAt) {
-      bytes += l.file.size || 0;
+    for (const kind of FILE_KINDS) {
+      if (!store.hasFile(l, kind)) continue;
+      bytes += l[kind].size || 0;
       files++;
     }
   }
@@ -407,7 +426,7 @@ function exportCsv(req, res, url, user) {
   const origin = publicOrigin(req);
   const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const statusLabel = (id) => STATUSES.find((s) => s.id === id)?.label ?? id;
-  const header = ['Data', 'Nome', 'WhatsApp', 'CPF/CNPJ', 'E-mail', 'Cidade', 'UF', 'Distribuidora', 'Conta (R$/mês)', 'kWh estimado', 'kWh real', 'Status', 'Parceiro', 'Anotações', 'Conta de luz', 'Sistema Eletrodara'];
+  const header = ['Data', 'Nome', 'WhatsApp', 'CPF/CNPJ', 'E-mail', 'Cidade', 'UF', 'Distribuidora', 'Conta (R$/mês)', 'kWh estimado', 'kWh real', 'Status', 'Parceiro', 'Anotações', 'Conta de luz', 'Documento do titular', 'Sistema Eletrodara'];
   const lines = leads.map((l) =>
     [
       new Date(new Date(l.createdAt).getTime() + TZ_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' '),
@@ -424,7 +443,8 @@ function exportCsv(req, res, url, user) {
       statusLabel(l.status),
       l.partnerId ? store.partners.get(l.partnerId)?.name ?? '' : 'Eletrodara (direto)',
       l.notes,
-      l.file && !l.file.deletedAt ? `${origin}/conta/${l.file.token}` : '',
+      store.hasFile(l, 'file') ? fileUrl(origin, l, 'file') : '',
+      store.hasFile(l, 'docFile') ? fileUrl(origin, l, 'docFile') : '',
       l.eletrodara ? [l.eletrodara.status, l.eletrodara.detail].filter(Boolean).join(': ') : '',
     ]
       .map(cell)
@@ -480,7 +500,7 @@ async function handlePainel(req, res, url) {
   };
 
   // --- Cadastros
-  const leadMatch = p.match(/^\/painel\/lead\/([\w-]+)(?:\/(apagar-conta|excluir|enviar-eletrodara))?$/);
+  const leadMatch = p.match(/^\/painel\/lead\/([\w-]+)(?:\/(apagar-conta|apagar-documento|excluir|enviar-eletrodara))?$/);
   if (leadMatch && req.method === 'POST') {
     const [, id, action] = leadMatch;
     const lead = store.leads.get(id);
@@ -497,8 +517,12 @@ async function handlePainel(req, res, url) {
       return back(sent === 'enviado' ? 'eletrodara-ok' : sent === 'ja_existe' ? 'eletrodara-existe' : 'eletrodara-erro', `#c-${id}`);
     }
     if (action === 'apagar-conta') {
-      await store.removeLeadFile(lead);
+      await store.removeLeadFile(lead, 'file');
       return back('conta', `#c-${id}`);
+    }
+    if (action === 'apagar-documento') {
+      await store.removeLeadFile(lead, 'docFile');
+      return back('documento', `#c-${id}`);
     }
     const form = await readForm(req);
     const kwh = form.kwhReal === '' ? null : Math.max(0, Math.round(Number(form.kwhReal)));
@@ -631,8 +655,8 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/distribuidoras') return await handleDistribuidoras(res);
     const partnerApi = url.pathname.match(/^\/api\/parceiro\/([\w-]+)$/);
     if (partnerApi) return handlePartnerInfo(res, partnerApi[1]);
-    const conta = url.pathname.match(/^\/conta\/([\w-]{10,})$/);
-    if (conta) return handleBillFile(req, res, conta[1]);
+    const arquivo = url.pathname.match(/^\/(conta|documento)\/([\w-]{10,})$/);
+    if (arquivo) return handleLeadFile(req, res, arquivo[1], arquivo[2]);
     if (url.pathname === '/painel' || url.pathname.startsWith('/painel/')) return await handlePainel(req, res, url);
     if (req.method === 'GET' || req.method === 'HEAD') return await serveStatic(req, res, url);
     send(res, 405, 'Método não permitido.');

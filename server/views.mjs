@@ -1,5 +1,5 @@
 // HTML do painel (renderizado no servidor, sem JavaScript obrigatório).
-import { STATUSES } from './store.mjs';
+import { STATUSES, FILE_ROUTE } from './store.mjs';
 
 export const escapeHtml = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -11,6 +11,11 @@ const num = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigit
 const formatSize = (b) => (b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
 const formatDate = (iso) =>
   new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+// Botões de arquivo no cartão do cadastro: conta de luz e documento com foto do titular.
+const FILE_ACTIONS = [
+  { kind: 'file', noun: 'conta', Noun: 'Conta', g: 'a', remove: 'apagar-conta' },
+  { kind: 'docFile', noun: 'documento', Noun: 'Documento', g: 'o', remove: 'apagar-documento' },
+];
 const statusLabel = (id) => STATUSES.find((s) => s.id === id)?.label ?? id;
 const formatPhone = (digits) => {
   const d = String(digits || '').replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '');
@@ -141,7 +146,7 @@ export function dashboardPage({ user, leads, allPartners, stats, ranking, query,
   <div class="kpi hl"><b>${num(stats.kwhTotal)}</b><span>kWh/mês cadastrados<br>${num(stats.kwhConfirmed)} confirmados na fatura</span></div>
   <div class="kpi"><b>${num(stats.byStatus.ativado || 0)}</b><span>ativados · ${num(stats.kwhActive)} kWh/mês</span></div>
   <div class="kpi"><b>${brl(stats.billTotal)}</b><span>em contas de luz/mês</span></div>
-  ${isAdmin ? `<div class="kpi"><b>${formatSize(storage.bytes)}</b><span>${storage.files} contas guardadas</span></div>` : ''}
+  ${isAdmin ? `<div class="kpi"><b>${formatSize(storage.bytes)}</b><span>${storage.files} arquivos guardados</span></div>` : ''}
 </div>`;
 
   const funnel = `<div class="chips">
@@ -186,12 +191,13 @@ export function dashboardPage({ user, leads, allPartners, stats, ranking, query,
   const cards = leads
     .map((l) => {
       const phoneDigits = l.phone.replace(/\D/g, '');
-      const fileActions = !l.file
-        ? '<span class="muted">Sem conta anexada</span>'
-        : l.file.deletedAt
-          ? '<span class="muted">Conta já removida</span>'
-          : `<a class="btn primary small" href="${origin}/conta/${l.file.token}" target="_blank" rel="noopener">Ver conta (${formatSize(l.file.size)})</a>
-             <form class="inline" method="post" action="/painel/lead/${l.id}/apagar-conta" onsubmit="return confirm('Apagar o arquivo da conta? O cadastro continua.')"><button class="btn danger small">Apagar conta</button></form>`;
+      const fileActions = FILE_ACTIONS.map((a) => {
+        const f = l[a.kind];
+        if (!f) return `<span class="muted">Sem ${a.noun} anexad${a.g}</span>`;
+        if (f.deletedAt) return `<span class="muted">${a.Noun} já removid${a.g}</span>`;
+        return `<a class="btn primary small" href="${origin}/${FILE_ROUTE[a.kind]}/${f.token}" target="_blank" rel="noopener">Ver ${a.noun} (${formatSize(f.size)})</a>
+             <form class="inline" method="post" action="/painel/lead/${l.id}/${a.remove}" onsubmit="return confirm('Apagar o arquivo d${a.g} ${a.noun}? O cadastro continua.')"><button class="btn danger small">Apagar ${a.noun}</button></form>`;
+      }).join('\n    ');
       return `<div class="card" id="c-${l.id}">
   <div class="row"><span class="name">${escapeHtml(l.name)}</span><span class="badge ${l.status}">${statusLabel(l.status)}</span></div>
   <div class="muted">${formatDate(l.createdAt)}${isAdmin ? ` · ${escapeHtml(partnerName(l.partnerId))}` : ''}</div>
@@ -219,7 +225,7 @@ export function dashboardPage({ user, leads, allPartners, stats, ranking, query,
         ? `<form class="inline" method="post" action="/painel/lead/${l.id}/enviar-eletrodara" onsubmit="return confirm('Enviar o cadastro de ${escapeHtml(l.name)} ao Sistema Eletrodara? Isso cria o lead lá e pode disparar o termo de assinatura.')"><button class="btn small">${l.eletrodara ? 'Reenviar' : 'Enviar'} ao Sistema Eletrodara</button></form>`
         : ''
     }
-    ${isAdmin ? `<form class="inline" method="post" action="/painel/lead/${l.id}/excluir" onsubmit="return confirm('Excluir o cadastro de ${escapeHtml(l.name)} e a conta? Não dá para desfazer.')"><button class="btn danger small">Excluir cadastro</button></form>` : ''}
+    ${isAdmin ? `<form class="inline" method="post" action="/painel/lead/${l.id}/excluir" onsubmit="return confirm('Excluir o cadastro de ${escapeHtml(l.name)} e os arquivos? Não dá para desfazer.')"><button class="btn danger small">Excluir cadastro</button></form>` : ''}
   </div>
 </div>`;
     })
@@ -313,7 +319,7 @@ export function settingsPage({ user, settings, flash }) {
   <label class="full" style="flex-direction:row;align-items:center;gap:10px;font-size:15px;color:var(--ink)">
     <input type="checkbox" name="eletrodaraAuto" value="1" ${settings.eletrodaraAuto ? 'checked' : ''} style="width:20px;height:20px">
     Enviar cada cadastro novo automaticamente ao Sistema Eletrodara</label>
-  <p class="muted full" style="margin:0">Cria o lead lá (origem "Landing") com CPF/CNPJ, contato, cidade, concessionária, valor e fatura — e o sistema deles pode disparar o termo de assinatura. Desligado, você envia cadastro por cadastro pelo botão "Enviar ao Sistema Eletrodara".</p>
+  <p class="muted full" style="margin:0">Cria o lead lá (origem "Landing") com CPF/CNPJ, contato, cidade, concessionária, valor, fatura e documento do titular — e o sistema deles pode disparar o termo de assinatura. Desligado, você envia cadastro por cadastro pelo botão "Enviar ao Sistema Eletrodara".</p>
   <label class="full">Link padrão do cadastro completo (clientes sem parceiro, ou parceiro sem link próprio)
     <input name="eletrodaraLink" value="${ELETRODARA_LINK_BASE}${escapeHtml(settings.eletrodaraSlugPadrao || '')}" required></label>
   <h2 class="full">Estimativa de kWh</h2>

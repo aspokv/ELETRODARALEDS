@@ -139,9 +139,12 @@ const formatBRL = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractio
 /**
  * Cria o cadastro no Sistema Eletrodara pelo link público do parceiro (slug).
  * Retorna { status: 'enviado' | 'ja_existe', detail } ou lança erro.
- * @param {{ slug: string, lead: any, file?: { buffer: Buffer, name: string, type: string } | null, observacoes?: string }} p
+ * file = fatura; docFile = documento com foto do titular (vai no campo "docFrente", o "arquivo único"
+ * de RG/CNH do formulário deles).
+ * @typedef {{ buffer: Buffer, name: string, type: string }} Arquivo
+ * @param {{ slug: string, lead: any, file?: Arquivo | null, docFile?: Arquivo | null, observacoes?: string }} p
  */
-export async function sendLead({ slug, lead, file, observacoes }) {
+export async function sendLead({ slug, lead, file, docFile, observacoes }) {
   const documento = String(lead.documento || '');
   if (!documento) throw new Error('Cadastro sem CPF/CNPJ.');
 
@@ -188,19 +191,27 @@ export async function sendLead({ slug, lead, file, observacoes }) {
   set('titularDiferente', '0');
   set('userAgent', 'Landing Eletrodara (integração automática)');
 
-  if (file?.buffer) {
+  // Mesmo fluxo do formulário deles: pede URLs de upload para todos os arquivos de uma vez,
+  // sobe cada um e manda só o caminho (<campo>Path). Sem URL, o arquivo vai direto no envio.
+  const uploads = [
+    { field: 'fatura', label: 'a fatura', file },
+    { field: 'docFrente', label: 'o documento do titular', file: docFile },
+  ].filter((u) => u.file?.buffer);
+  if (uploads.length) {
     const up = await callAction(slug, 'getPresignedUploadUrlsForPublicCadastroCompleto', [
       slug,
-      [{ field: 'fatura', fileName: file.name, contentType: file.type || 'application/octet-stream' }],
+      uploads.map((u) => ({ field: u.field, fileName: u.file.name, contentType: u.file.type || 'application/octet-stream' })),
     ]);
-    const target = up?.ok ? up.urls?.fatura : null;
-    if (target) {
-      const put = await fetch(target.uploadUrl, { method: 'PUT', body: file.buffer, headers: { 'Content-Type': file.type || 'application/octet-stream' } });
-      if (!put.ok) throw new Error(`Falha ao enviar a fatura (${put.status}).`);
-      set('faturaPath', target.storagePath);
-    } else {
-      // Mesmo fallback do formulário deles: arquivo direto no envio.
-      fd.set('fatura', new Blob([file.buffer], { type: file.type }), file.name);
+    for (const u of uploads) {
+      const contentType = u.file.type || 'application/octet-stream';
+      const target = up?.ok ? up.urls?.[u.field] : null;
+      if (target) {
+        const put = await fetch(target.uploadUrl, { method: 'PUT', body: u.file.buffer, headers: { 'Content-Type': contentType } });
+        if (!put.ok) throw new Error(`Falha ao enviar ${u.label} (${put.status}).`);
+        set(`${u.field}Path`, target.storagePath);
+      } else {
+        fd.set(u.field, new Blob([u.file.buffer], { type: contentType }), u.file.name);
+      }
     }
   }
 

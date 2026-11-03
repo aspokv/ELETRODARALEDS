@@ -7,11 +7,11 @@ Landing page de captação de cadastros da **Eletrodara Gestão de Energia**. Fo
 ## ⚡ Estrutura
 
 - **Hero + formulário de cadastro** acima da dobra.
-- **Cadastros e contas salvos no próprio servidor** (`server/server.mjs`, sem dependências). A mensagem do WhatsApp leva o link da conta.
+- **Cadastros, contas de luz e documentos do titular salvos no próprio servidor** (`server/server.mjs`, sem dependências). O formulário pede a conta (fatura completa ou foto legível) e o documento com foto (CNH, RG...); os dois são opcionais na hora e a mensagem do WhatsApp leva o link de cada um.
 - **Painel** em `/painel` (login por usuário/senha):
   - **Admin** (`ADMIN_USER`/`ADMIN_PASSWORD`): vê tudo — cadastros, kWh/mês (estimado e confirmado), ativados, ranking de parceiros, filtros, exportação CSV; cadastra parceiros e ajusta a tarifa média.
   - **Parceiro**: link próprio `/p/<slug>` (o cliente cai no WhatsApp dele) e vê/atualiza só os próprios cadastros.
-  - Contas de luz são apagadas sozinhas após 30 dias.
+  - Contas de luz e documentos são apagados sozinhos após 30 dias.
 - **Como funciona** em 3 passos, **perguntas frequentes** e dados institucionais.
 - Textos e dados da empresa centralizados em `src/config/site.js`.
 
@@ -43,8 +43,8 @@ Acesse [http://localhost:5173](http://localhost:5173). Para usar o painel localm
 O Dockerfile gera o site e roda `node server/server.mjs` na porta 80. Variáveis:
 
 - `ADMIN_PASSWORD` — senha do painel (`/painel`, usuário `eletrodara` ou `ADMIN_USER`). Sem ela o painel fica desativado.
-- `FILE_RETENTION_DAYS` — dias até a conta ser apagada sozinha (padrão 30).
-- Monte um volume persistente em `/data` (cadastros e contas).
+- `FILE_RETENTION_DAYS` — dias até a conta e o documento serem apagados sozinhos (padrão 30).
+- Monte um volume persistente em `/data` (cadastros, contas e documentos).
 
 ---
 
